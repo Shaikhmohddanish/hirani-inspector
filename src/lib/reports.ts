@@ -11,17 +11,28 @@ import { ImageRecord } from "@/store/useAppStore";
 import { generateAnnotatedImage } from "@/lib/annotations";
 import { imageStore } from "@/app/api/analyze/route";
 
-export async function generateNormalReport(imageIds: string[]): Promise<Buffer> {
-  // Fetch image metadata from store
-  const images: any[] = [];
-  for (const id of imageIds) {
-    const metadataBuffer = imageStore.get(`${id}_metadata`);
-    if (metadataBuffer) {
-      images.push({ id, ...JSON.parse(metadataBuffer.toString()) });
-    } else {
-      // If no metadata, create minimal record
-      images.push({ id, comment: "No assessment available" });
+export async function generateNormalReport(imageIds: string[] | ImageRecord[]): Promise<Buffer> {
+  // Handle both old format (ImageRecord[]) and new format (string[])
+  let images: any[] = [];
+  
+  if (imageIds.length > 0 && typeof imageIds[0] === 'object' && imageIds[0] !== null && 'dataUrl' in imageIds[0]) {
+    // Old format: array of ImageRecord objects with dataUrl
+    console.log('Using ImageRecord[] format with dataUrl');
+    images = imageIds as ImageRecord[];
+  } else if (imageIds.length > 0 && typeof imageIds[0] === 'string') {
+    // New format: array of image IDs - fetch from store
+    console.log('Using string[] format - fetching from store');
+    for (const id of imageIds as string[]) {
+      const metadataBuffer = imageStore.get(`${id}_metadata`);
+      if (metadataBuffer) {
+        images.push({ id, ...JSON.parse(metadataBuffer.toString()) });
+      } else {
+        // If no metadata, create minimal record
+        images.push({ id, comment: "No assessment available" });
+      }
     }
+  } else {
+    throw new Error(`Invalid input format: expected ImageRecord[] or string[], got ${typeof imageIds[0]}`);
   }
 
   // Process images in batches to avoid memory issues
@@ -38,16 +49,27 @@ export async function generateNormalReport(imageIds: string[]): Promise<Buffer> 
   return await Packer.toBuffer(doc);
 }
 
-export async function generateModifiedReport(imageIds: string[]): Promise<Buffer> {
-  // Fetch image metadata from store
-  const images: any[] = [];
-  for (const id of imageIds) {
-    const metadataBuffer = imageStore.get(`${id}_metadata`);
-    if (metadataBuffer) {
-      images.push({ id, ...JSON.parse(metadataBuffer.toString()) });
-    } else {
-      images.push({ id, comment: "No assessment available", annotations: [] });
+export async function generateModifiedReport(imageIds: string[] | ImageRecord[]): Promise<Buffer> {
+  // Handle both old format (ImageRecord[]) and new format (string[])
+  let images: any[] = [];
+  
+  if (imageIds.length > 0 && typeof imageIds[0] === 'object' && imageIds[0] !== null && 'dataUrl' in imageIds[0]) {
+    // Old format: array of ImageRecord objects with dataUrl
+    console.log('Using ImageRecord[] format with dataUrl');
+    images = imageIds as ImageRecord[];
+  } else if (imageIds.length > 0 && typeof imageIds[0] === 'string') {
+    // New format: array of image IDs - fetch from store
+    console.log('Using string[] format - fetching from store');
+    for (const id of imageIds as string[]) {
+      const metadataBuffer = imageStore.get(`${id}_metadata`);
+      if (metadataBuffer) {
+        images.push({ id, ...JSON.parse(metadataBuffer.toString()) });
+      } else {
+        images.push({ id, comment: "No assessment available", annotations: [] });
+      }
     }
+  } else {
+    throw new Error(`Invalid input format: expected ImageRecord[] or string[], got ${typeof imageIds[0]}`);
   }
 
   // Process images in batches to avoid memory issues
@@ -83,7 +105,7 @@ async function buildNormalReportContent(images: ImageRecord[], startIndex: numbe
 
     // Original image
     try {
-      const imageBuffer = await fetchImageBuffer(img.id);
+      const imageBuffer = await fetchImageBuffer(img.id, img.dataUrl);
       const { width, height } = await getImageDimensions(imageBuffer);
       const scaled = scaleToFit(width, height, 15);
 
@@ -168,8 +190,17 @@ async function buildModifiedReportContent(images: ImageRecord[], startIndex: num
           .toBuffer();
       } else if (img.annotations && img.annotations.length > 0) {
         // Generate annotated image on the fly
-        const originalBuffer = imageStore.get(img.id);
-        if (!originalBuffer) throw new Error(`Image ${img.id} not found`);
+        let originalBuffer: Buffer;
+        if (img.dataUrl) {
+          // From dataUrl (old format)
+          const base64Data = img.dataUrl.split(',')[1];
+          originalBuffer = Buffer.from(base64Data, 'base64');
+        } else {
+          // From imageStore (new format)
+          const storedBuffer = imageStore.get(img.id);
+          if (!storedBuffer) throw new Error(`Image ${img.id} not found`);
+          originalBuffer = storedBuffer;
+        }
         const annotated = await generateAnnotatedImage(originalBuffer, img.annotations);
         // Optimize annotated image
         const sharp = (await import("sharp")).default;
@@ -179,7 +210,7 @@ async function buildModifiedReportContent(images: ImageRecord[], startIndex: num
           .toBuffer();
       } else {
         // No annotations, use original image
-        imageBuffer = await fetchImageBuffer(img.id);
+        imageBuffer = await fetchImageBuffer(img.id, img.dataUrl);
       }
 
       const { width, height } = await getImageDimensions(imageBuffer);
@@ -232,10 +263,19 @@ async function buildModifiedReportContent(images: ImageRecord[], startIndex: num
   return content;
 }
 
-async function fetchImageBuffer(imageId: string): Promise<Buffer> {
-  // Fetch from imageStore (server-side storage)
-  const buffer = imageStore.get(imageId);
-  if (!buffer) throw new Error(`Image ${imageId} not found in store`);
+async function fetchImageBuffer(imageId: string, dataUrl?: string): Promise<Buffer> {
+  let buffer: Buffer;
+  
+  // Try dataUrl first (old format)
+  if (dataUrl) {
+    const base64Data = dataUrl.split(',')[1];
+    buffer = Buffer.from(base64Data, 'base64');
+  } else {
+    // Fetch from imageStore (new format)
+    const storedBuffer = imageStore.get(imageId);
+    if (!storedBuffer) throw new Error(`Image ${imageId} not found in store`);
+    buffer = storedBuffer;
+  }
   
   // Optimize image for Word document: resize and compress
   const sharp = (await import("sharp")).default;

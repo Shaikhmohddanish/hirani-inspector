@@ -10,31 +10,31 @@ export async function POST(request: NextRequest) {
   try {
     // Accept both formats for backward compatibility
     const body = await request.json();
-    let imageIds: string[];
+    let input: string[] | ImageRecord[];
     
     if (body.imageIds) {
-      // New format: just IDs
-      imageIds = body.imageIds;
+      // New format: just IDs (strings)
+      input = body.imageIds;
     } else if (body.images) {
-      // Old format: extract IDs from ImageRecord[]
-      imageIds = body.images.map((img: ImageRecord) => img.id);
+      // Old format: full ImageRecord[] with dataUrl
+      input = body.images;
     } else {
       return NextResponse.json({ error: "No images provided" }, { status: 400 });
     }
 
-    if (!imageIds || !imageIds.length) {
+    if (!input || !input.length) {
       return NextResponse.json({ error: "No images provided" }, { status: 400 });
     }
 
     // Validate reasonable limits
-    if (imageIds.length > 1000) {
+    if (input.length > 1000) {
       return NextResponse.json(
         { error: "Maximum 1000 images per report" },
         { status: 400 },
       );
     }
 
-    const reportBuffer = await generateNormalReport(imageIds);
+    const reportBuffer = await generateNormalReport(input);
 
     return new NextResponse(Uint8Array.from(reportBuffer), {
       headers: {
