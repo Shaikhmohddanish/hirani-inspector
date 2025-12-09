@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { imageStore } from "@/app/api/analyze/route";
+import { getImage, storeAnnotatedImage } from "@/lib/storage";
 import { generateAnnotatedImage } from "@/lib/annotations";
 import { AnnotationBox } from "@/store/useAppStore";
 
@@ -10,7 +10,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const { annotations } = body as { annotations: AnnotationBox[] };
 
     // Get original image
-    const originalBuffer = imageStore.get(id);
+    const originalBuffer = await getImage(id);
     if (!originalBuffer) {
       return NextResponse.json({ error: "Image not found" }, { status: 404 });
     }
@@ -18,11 +18,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // Generate annotated image
     const annotatedBuffer = await generateAnnotatedImage(originalBuffer, annotations);
 
-    // Store annotated image with suffix
-    const annotatedId = `${id}_annotated`;
-    imageStore.set(annotatedId, annotatedBuffer);
+    // Store annotated image
+    await storeAnnotatedImage(id, annotatedBuffer);
 
-    return NextResponse.json({ success: true, annotatedId });
+    return NextResponse.json({ success: true, annotatedId: `${id}_annotated` });
   } catch (error) {
     console.error("Error generating annotated image:", error);
     return NextResponse.json(

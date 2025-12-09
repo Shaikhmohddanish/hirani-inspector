@@ -9,7 +9,7 @@ import {
 } from "docx";
 import { ImageRecord } from "@/store/useAppStore";
 import { generateAnnotatedImage } from "@/lib/annotations";
-import { imageStore } from "@/app/api/analyze/route";
+import { getImage, getMetadata, getAnnotatedImage } from "@/lib/storage";
 
 export async function generateNormalReport(imageIds: string[] | ImageRecord[]): Promise<Buffer> {
   // Handle both old format (ImageRecord[]) and new format (string[])
@@ -20,12 +20,12 @@ export async function generateNormalReport(imageIds: string[] | ImageRecord[]): 
     console.log('Using ImageRecord[] format with dataUrl');
     images = imageIds as ImageRecord[];
   } else if (imageIds.length > 0 && typeof imageIds[0] === 'string') {
-    // New format: array of image IDs - fetch from store
-    console.log('Using string[] format - fetching from store');
+    // New format: array of image IDs - fetch from storage
+    console.log('Using string[] format - fetching from storage');
     for (const id of imageIds as string[]) {
-      const metadataBuffer = imageStore.get(`${id}_metadata`);
-      if (metadataBuffer) {
-        images.push({ id, ...JSON.parse(metadataBuffer.toString()) });
+      const metadata = await getMetadata(id);
+      if (metadata) {
+        images.push({ id, ...metadata });
       } else {
         // If no metadata, create minimal record
         images.push({ id, comment: "No assessment available" });
@@ -58,12 +58,12 @@ export async function generateModifiedReport(imageIds: string[] | ImageRecord[])
     console.log('Using ImageRecord[] format with dataUrl');
     images = imageIds as ImageRecord[];
   } else if (imageIds.length > 0 && typeof imageIds[0] === 'string') {
-    // New format: array of image IDs - fetch from store
-    console.log('Using string[] format - fetching from store');
+    // New format: array of image IDs - fetch from storage
+    console.log('Using string[] format - fetching from storage');
     for (const id of imageIds as string[]) {
-      const metadataBuffer = imageStore.get(`${id}_metadata`);
-      if (metadataBuffer) {
-        images.push({ id, ...JSON.parse(metadataBuffer.toString()) });
+      const metadata = await getMetadata(id);
+      if (metadata) {
+        images.push({ id, ...metadata });
       } else {
         images.push({ id, comment: "No assessment available", annotations: [] });
       }
@@ -176,8 +176,7 @@ async function buildModifiedReportContent(images: ImageRecord[], startIndex: num
     // Modified report: show only annotated image (or original if no annotation)
     try {
       // Check for pre-saved annotated image first
-      const annotatedId = `${img.id}_annotated`;
-      const savedAnnotated = imageStore.get(annotatedId);
+      const savedAnnotated = await getAnnotatedImage(img.id);
       
       let imageBuffer: Buffer;
       
@@ -196,8 +195,8 @@ async function buildModifiedReportContent(images: ImageRecord[], startIndex: num
           const base64Data = img.dataUrl.split(',')[1];
           originalBuffer = Buffer.from(base64Data, 'base64');
         } else {
-          // From imageStore (new format)
-          const storedBuffer = imageStore.get(img.id);
+          // From storage (new format)
+          const storedBuffer = await getImage(img.id);
           if (!storedBuffer) throw new Error(`Image ${img.id} not found`);
           originalBuffer = storedBuffer;
         }
@@ -271,8 +270,8 @@ async function fetchImageBuffer(imageId: string, dataUrl?: string): Promise<Buff
     const base64Data = dataUrl.split(',')[1];
     buffer = Buffer.from(base64Data, 'base64');
   } else {
-    // Fetch from imageStore (new format)
-    const storedBuffer = imageStore.get(imageId);
+    // Fetch from storage (new format)
+    const storedBuffer = await getImage(imageId);
     if (!storedBuffer) throw new Error(`Image ${imageId} not found in store`);
     buffer = storedBuffer;
   }

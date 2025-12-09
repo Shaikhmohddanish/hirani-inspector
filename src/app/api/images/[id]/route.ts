@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { imageStore } from "../../analyze/route";
+import { getImage, storeImage, storeMetadata, deleteImage } from "@/lib/storage";
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const imageBuffer = imageStore.get(id);
+  const imageBuffer = await getImage(id);
 
   if (!imageBuffer) {
     return NextResponse.json({ error: "Image not found" }, { status: 404 });
@@ -24,21 +24,18 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (contentType?.includes('application/json')) {
     // Store metadata
     const metadata = await request.json();
-    imageStore.set(`${id}_metadata`, Buffer.from(JSON.stringify(metadata)));
+    await storeMetadata(id, metadata);
     return NextResponse.json({ success: true, id });
   } else {
     // Store image buffer
     const buffer = Buffer.from(await request.arrayBuffer());
-    imageStore.set(id, buffer);
+    await storeImage(id, buffer);
     return NextResponse.json({ success: true, id });
   }
 }
 
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  imageStore.delete(id);
-  imageStore.delete(`${id}_metadata`);
-  imageStore.delete(`${id}_annotated`);
-
+  await deleteImage(id);
   return NextResponse.json({ success: true });
 }
