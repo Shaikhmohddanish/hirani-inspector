@@ -11,9 +11,21 @@ import { ImageRecord } from "@/store/useAppStore";
 import { generateAnnotatedImage } from "@/lib/annotations";
 import { imageStore } from "@/app/api/analyze/route";
 
-export async function generateNormalReport(images: ImageRecord[]): Promise<Buffer> {
-  // Process images in batches to avoid memory issues with large datasets
-  const BATCH_SIZE = 50;
+export async function generateNormalReport(imageIds: string[]): Promise<Buffer> {
+  // Fetch image metadata from store
+  const images: any[] = [];
+  for (const id of imageIds) {
+    const metadataBuffer = imageStore.get(`${id}_metadata`);
+    if (metadataBuffer) {
+      images.push({ id, ...JSON.parse(metadataBuffer.toString()) });
+    } else {
+      // If no metadata, create minimal record
+      images.push({ id, comment: "No assessment available" });
+    }
+  }
+
+  // Process images in batches to avoid memory issues
+  const BATCH_SIZE = 20; // Reduced for faster processing
   const sections = [];
   
   for (let i = 0; i < images.length; i += BATCH_SIZE) {
@@ -26,9 +38,20 @@ export async function generateNormalReport(images: ImageRecord[]): Promise<Buffe
   return await Packer.toBuffer(doc);
 }
 
-export async function generateModifiedReport(images: ImageRecord[]): Promise<Buffer> {
-  // Process images in batches to avoid memory issues with large datasets
-  const BATCH_SIZE = 50;
+export async function generateModifiedReport(imageIds: string[]): Promise<Buffer> {
+  // Fetch image metadata from store
+  const images: any[] = [];
+  for (const id of imageIds) {
+    const metadataBuffer = imageStore.get(`${id}_metadata`);
+    if (metadataBuffer) {
+      images.push({ id, ...JSON.parse(metadataBuffer.toString()) });
+    } else {
+      images.push({ id, comment: "No assessment available", annotations: [] });
+    }
+  }
+
+  // Process images in batches to avoid memory issues
+  const BATCH_SIZE = 20; // Reduced for faster processing
   const sections = [];
   
   for (let i = 0; i < images.length; i += BATCH_SIZE) {
@@ -60,19 +83,16 @@ async function buildNormalReportContent(images: ImageRecord[], startIndex: numbe
 
     // Original image
     try {
-      const imageBuffer = await fetchImageBuffer(img.id, img.dataUrl);
+      const imageBuffer = await fetchImageBuffer(img.id);
       const { width, height } = await getImageDimensions(imageBuffer);
       const scaled = scaleToFit(width, height, 15);
-      
-      // Free up memory by releasing the buffer reference after conversion
-      const base64Data = imageBuffer.toString("base64");
 
       content.push(
         new Paragraph({
           children: [
             new ImageRun({
-              type: "png",
-              data: base64Data,
+              type: "jpg", // Changed to jpg for better compression
+              data: imageBuffer,
               transformation: {
                 width: scaled.width,
                 height: scaled.height,
@@ -142,28 +162,35 @@ async function buildModifiedReportContent(images: ImageRecord[], startIndex: num
       if (savedAnnotated) {
         // Use pre-saved annotated image
         const sharp = (await import("sharp")).default;
-        imageBuffer = await sharp(savedAnnotated).png().toBuffer();
-      } else if (img.annotations.length > 0) {
+        imageBuffer = await sharp(savedAnnotated)
+          .resize(1200, 1200, { fit: 'inside', withoutEnlargement: true })
+          .jpeg({ quality: 85, progressive: true })
+          .toBuffer();
+      } else if (img.annotations && img.annotations.length > 0) {
         // Generate annotated image on the fly
-        const originalBuffer = await fetchImageBuffer(img.id, img.dataUrl);
-        imageBuffer = await generateAnnotatedImage(originalBuffer, img.annotations);
+        const originalBuffer = imageStore.get(img.id);
+        if (!originalBuffer) throw new Error(`Image ${img.id} not found`);
+        const annotated = await generateAnnotatedImage(originalBuffer, img.annotations);
+        // Optimize annotated image
+        const sharp = (await import("sharp")).default;
+        imageBuffer = await sharp(annotated)
+          .resize(1200, 1200, { fit: 'inside', withoutEnlargement: true })
+          .jpeg({ quality: 85, progressive: true })
+          .toBuffer();
       } else {
         // No annotations, use original image
-        imageBuffer = await fetchImageBuffer(img.id, img.dataUrl);
+        imageBuffer = await fetchImageBuffer(img.id);
       }
 
       const { width, height } = await getImageDimensions(imageBuffer);
       const scaled = scaleToFit(width, height, 15);
-      
-      // Convert to base64 and free buffer reference
-      const base64Data = imageBuffer.toString("base64");
 
       content.push(
         new Paragraph({
           children: [
             new ImageRun({
-              type: "png",
-              data: base64Data,
+              type: "jpg", // Changed to jpg
+              data: imageBuffer,
               transformation: {
                 width: scaled.width,
                 height: scaled.height,
@@ -205,31 +232,21 @@ async function buildModifiedReportContent(images: ImageRecord[], startIndex: num
   return content;
 }
 
-async function fetchImageBuffer(imageId: string, dataUrl?: string): Promise<Buffer> {
-  // Use dataUrl if available (client-side storage)
-  if (dataUrl) {
-    const base64Data = dataUrl.split(',')[1];
-    const buffer = Buffer.from(base64Data, 'base64');
-    
-    // Convert to PNG for Word compatibility with optimized settings
-    const sharp = (await import("sharp")).default;
-    return await sharp(buffer)
-      .png({
-        compressionLevel: 6, // Balance between size and speed
-        adaptiveFiltering: false, // Faster encoding,
-      })
-      .toBuffer();
-  }
-  
-  // Fallback to imageStore (legacy)
+async function fetchImageBuffer(imageId: string): Promise<Buffer> {
+  // Fetch from imageStore (server-side storage)
   const buffer = imageStore.get(imageId);
   if (!buffer) throw new Error(`Image ${imageId} not found in store`);
   
+  // Optimize image for Word document: resize and compress
   const sharp = (await import("sharp")).default;
   return await sharp(buffer)
-    .png({
-      compressionLevel: 6,
-      adaptiveFiltering: false,
+    .resize(1200, 1200, { // Limit max dimensions for faster processing
+      fit: 'inside',
+      withoutEnlargement: true,
+    })
+    .jpeg({ // Use JPEG for better compression (Word supports it)
+      quality: 85,
+      progressive: true,
     })
     .toBuffer();
 }

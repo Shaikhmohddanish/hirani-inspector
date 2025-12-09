@@ -8,27 +8,40 @@ export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest) {
   try {
-    const { images } = (await request.json()) as { images: ImageRecord[] };
+    // Accept both formats for backward compatibility
+    const body = await request.json();
+    let imageIds: string[];
+    
+    if (body.imageIds) {
+      // New format: just IDs
+      imageIds = body.imageIds;
+    } else if (body.images) {
+      // Old format: extract IDs from ImageRecord[]
+      imageIds = body.images.map((img: ImageRecord) => img.id);
+    } else {
+      return NextResponse.json({ error: "No images provided" }, { status: 400 });
+    }
 
-    if (!images || !images.length) {
+    if (!imageIds || !imageIds.length) {
       return NextResponse.json({ error: "No images provided" }, { status: 400 });
     }
 
     // Validate reasonable limits
-    if (images.length > 1000) {
+    if (imageIds.length > 1000) {
       return NextResponse.json(
         { error: "Maximum 1000 images per report" },
         { status: 400 },
       );
     }
 
-    const reportBuffer = await generateNormalReport(images);
+    const reportBuffer = await generateNormalReport(imageIds);
 
     return new NextResponse(Uint8Array.from(reportBuffer), {
       headers: {
         "Content-Type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         "Content-Disposition": `attachment; filename="inspection-report-${new Date().toISOString().split("T")[0]}.docx"`,
         "Cache-Control": "no-store",
+        "Content-Length": reportBuffer.length.toString(),
       },
     });
   } catch (error) {

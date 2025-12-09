@@ -31,6 +31,27 @@ export function UnifiedInspectorPanel() {
 
     addImages(records);
     addLog(`Loaded ${records.length} images`, "info");
+    
+    // Upload images to server-side storage for report generation
+    addLog(`Uploading ${records.length} images to server...`, "info");
+    try {
+      await Promise.all(
+        records.map(async (record) => {
+          if (!record.dataUrl) return;
+          const base64Data = record.dataUrl.split(',')[1];
+          const buffer = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
+          
+          await fetch(`/api/images/${record.id}`, {
+            method: "POST",
+            body: buffer,
+          });
+        })
+      );
+      addLog("Images uploaded successfully", "info");
+    } catch (error) {
+      addLog(`Upload error: ${error instanceof Error ? error.message : 'Unknown'}`, "error");
+    }
+    
     event.target.value = "";
   };
 
@@ -153,13 +174,28 @@ export function UnifiedInspectorPanel() {
     setGenerating(true);
     addLog("Generating normal report...", "info");
     try {
+      // Upload metadata first
+      await Promise.all(
+        images.map((img) =>
+          fetch(`/api/images/${img.id}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ comment: img.comment, annotations: img.annotations }),
+          })
+        )
+      );
+
+      // Send only image IDs to avoid 413 error
       const response = await fetch("/api/reports/normal", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ images }),
+        body: JSON.stringify({ imageIds: images.map(img => img.id) }),
       });
 
-      if (!response.ok) throw new Error("Failed to generate report");
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to generate report: ${response.status} ${errorText}`);
+      }
 
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
@@ -184,13 +220,28 @@ export function UnifiedInspectorPanel() {
     setGenerating(true);
     addLog("Generating modified report...", "info");
     try {
+      // Upload metadata first
+      await Promise.all(
+        images.map((img) =>
+          fetch(`/api/images/${img.id}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ comment: img.comment, annotations: img.annotations }),
+          })
+        )
+      );
+
+      // Send only image IDs to avoid 413 error
       const response = await fetch("/api/reports/modified", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ images }),
+        body: JSON.stringify({ imageIds: images.map(img => img.id) }),
       });
 
-      if (!response.ok) throw new Error("Failed to generate report");
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to generate report: ${response.status} ${errorText}`);
+      }
 
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);

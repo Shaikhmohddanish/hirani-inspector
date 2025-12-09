@@ -1,0 +1,27 @@
+{
+  "functions": {
+    "src/app/api/reports/normal/route.ts": {
+      "maxDuration": 300,
+      "memory": 3008
+    },
+    "src/app/api/reports/modified/route.ts": {
+      "maxDuration": 300,
+      "memory": 3008
+    },
+    "src/app/api/images/[id]/route.ts": {
+      "maxDuration": 60,
+      "memory": 1024
+    }
+  },
+  "headers": [
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+        }
+      ]
+    }
+  ]
+}
