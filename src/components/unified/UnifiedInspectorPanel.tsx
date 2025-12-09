@@ -20,6 +20,7 @@ export function UnifiedInspectorPanel() {
   const [batchProgress, setBatchProgress] = useState({ current: 0, total: 0 });
   const [rateSeconds, setRateSeconds] = useState(1.0);
   const [generating, setGenerating] = useState(false);
+  const [cleaning, setCleaning] = useState(false);
 
   const currentImage = images[currentIndex];
 
@@ -175,6 +176,31 @@ export function UnifiedInspectorPanel() {
     addLog("Cleared boxes for current image", "info");
   };
 
+  const handleCleanupCloudinary = async () => {
+    if (!confirm('Delete ALL images from Cloudinary? This cannot be undone!')) return;
+    
+    setCleaning(true);
+    addLog("Cleaning up Cloudinary storage...", "info");
+    
+    try {
+      const response = await fetch('/api/images/cleanup', {
+        method: 'DELETE',
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        addLog(`✅ Deleted ${result.deleted} images from Cloudinary`, "info");
+      } else {
+        addLog(`❌ Cleanup failed: ${result.error}`, "error");
+      }
+    } catch (error) {
+      addLog(`❌ Cleanup error: ${error instanceof Error ? error.message : 'Unknown'}`, "error");
+    } finally {
+      setCleaning(false);
+    }
+  };
+
   // Report handlers
   const handleGenerateNormal = async () => {
     if (!images.length) return;
@@ -321,6 +347,14 @@ export function UnifiedInspectorPanel() {
             className="w-20 rounded border border-slate-300 px-2 py-1"
           />
         </label>
+        <button
+          onClick={handleCleanupCloudinary}
+          disabled={cleaning}
+          className="rounded-lg bg-orange-600 px-4 py-2 text-sm font-medium text-white hover:bg-orange-700 disabled:bg-slate-300"
+          title="Delete all images from Cloudinary storage"
+        >
+          {cleaning ? 'Cleaning...' : '🗑️ Cleanup Cloud'}
+        </button>
         <div className="ml-auto flex items-center gap-4">
           <form action="/api/auth/logout" method="POST">
             <button

@@ -4,6 +4,7 @@ import {
   uploadToCloudinary, 
   getFromCloudinary, 
   deleteFromCloudinary,
+  deleteAllFromCloudinary,
   storeMetadataCloudinary,
   getMetadataCloudinary
 } from './cloudinary';
@@ -44,4 +45,8 @@ export async function getAnnotatedImage(id: string): Promise<Buffer | null> {
   } catch (error) {
     return null;
   }
+}
+
+export async function deleteAllImages(): Promise<{ deleted: number; errors: number }> {
+  return await deleteAllFromCloudinary();
 }

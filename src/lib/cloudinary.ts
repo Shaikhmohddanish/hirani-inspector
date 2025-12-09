@@ -76,6 +76,37 @@ export async function deleteFromCloudinary(imageId: string): Promise<void> {
   }
 }
 
+export async function deleteAllFromCloudinary(): Promise<{ deleted: number; errors: number }> {
+  try {
+    console.log(`Deleting all images from folder: ${FOLDER}`);
+    
+    // Delete all resources in the folder
+    const result = await cloudinary.api.delete_resources_by_prefix(FOLDER, {
+      resource_type: 'image',
+    });
+    
+    const deleted = Object.keys(result.deleted || {}).length;
+    const errors = Object.keys(result.deleted_counts || {}).filter(
+      key => result.deleted[key] !== 'deleted'
+    ).length;
+    
+    console.log(`Deleted ${deleted} images, ${errors} errors`);
+    
+    // Also try to delete the folder itself (might be empty now)
+    try {
+      await cloudinary.api.delete_folder(FOLDER);
+      console.log(`Deleted folder: ${FOLDER}`);
+    } catch (folderError) {
+      // Folder might not be empty or already deleted, ignore
+    }
+    
+    return { deleted, errors };
+  } catch (error) {
+    console.error('Error deleting all from Cloudinary:', error);
+    throw error;
+  }
+}
+
 // Store metadata as base64-encoded context (persists with the image)
 export async function storeMetadataCloudinary(imageId: string, metadata: any): Promise<void> {
   const maxRetries = 3;
