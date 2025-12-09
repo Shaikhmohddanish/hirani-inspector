@@ -23,6 +23,7 @@ export type ImageRecord = {
   comment: string;
   annotations: AnnotationBox[];
   hasAnnotatedAsset: boolean;
+  dataUrl?: string; // Base64 data URL for client-side storage
 };
 
 interface AppState {
@@ -104,16 +105,28 @@ function generateUUID(): string {
   });
 }
 
-export function fabricateRecordsFromFiles(files: FileList | null): ImageRecord[] {
+export async function fabricateRecordsFromFiles(files: FileList | null): Promise<ImageRecord[]> {
   if (!files || !files.length) return [];
-  return Array.from(files).map((file) => ({
-    id: generateUUID(),
-    name: file.name,
-    size: file.size,
-    uploadedAt: new Date().toISOString(),
-    status: "pending" as ImageStatus,
-    comment: "",
-    annotations: [],
-    hasAnnotatedAsset: false,
-  }));
+  const records = await Promise.all(
+    Array.from(files).map(async (file) => {
+      // Convert to data URL for client-side storage
+      const dataUrl = await new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.readAsDataURL(file);
+      });
+      return {
+        id: generateUUID(),
+        name: file.name,
+        size: file.size,
+        uploadedAt: new Date().toISOString(),
+        status: "pending" as ImageStatus,
+        comment: "",
+        annotations: [],
+        hasAnnotatedAsset: false,
+        dataUrl,
+      };
+    })
+  );
+  return records;
 }

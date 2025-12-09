@@ -26,20 +26,8 @@ export function UnifiedInspectorPanel() {
   // Upload handlers
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
-    const records = fabricateRecordsFromFiles(files);
+    const records = await fabricateRecordsFromFiles(files);
     if (!records.length) return;
-
-    if (files) {
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        const record = records[i];
-        const arrayBuffer = await file.arrayBuffer();
-        await fetch(`/api/images/${record.id}`, {
-          method: "POST",
-          body: arrayBuffer,
-        });
-      }
-    }
 
     addImages(records);
     addLog(`Loaded ${records.length} images`, "info");
@@ -66,8 +54,11 @@ export function UnifiedInspectorPanel() {
       setBatchProgress({ current: i + 1, total: pending.length });
 
       try {
+        // Extract base64 from data URL
+        const base64Data = img.dataUrl?.split(',')[1] || '';
+        
         const formData = new FormData();
-        formData.append("imageId", img.id);
+        formData.append("imageBase64", base64Data);
 
         const response = await fetch("/api/analyze", {
           method: "POST",
@@ -314,9 +305,9 @@ export function UnifiedInspectorPanel() {
           </div>
 
           <div className="flex-1 bg-slate-900">
-            {currentImage ? (
+            {currentImage && currentImage.dataUrl ? (
               <ImageCanvas
-                imageSrc={`/api/images/${currentImage.id}`}
+                imageSrc={currentImage.dataUrl}
                 boxes={currentImage.annotations}
                 onBoxAdded={handleBoxAdded}
                 onBoxRemoved={handleBoxRemoved}

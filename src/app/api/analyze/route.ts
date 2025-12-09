@@ -9,19 +9,11 @@ export { imageStore };
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
-    const imageId = formData.get("imageId") as string;
+    const base64 = formData.get("imageBase64") as string;
 
-    if (!imageId) {
-      return NextResponse.json({ error: "Image ID required" }, { status: 400 });
+    if (!base64) {
+      return NextResponse.json({ error: "Image base64 data required" }, { status: 400 });
     }
-
-    const imageBuffer = imageStore.get(imageId);
-    if (!imageBuffer) {
-      return NextResponse.json({ error: "Image not found" }, { status: 404 });
-    }
-
-    // Convert to base64
-    const base64 = imageBuffer.toString("base64");
 
     // Call OpenAI
     const openaiResponse = await fetch("https://api.openai.com/v1/chat/completions", {
