@@ -60,7 +60,7 @@ async function buildNormalReportContent(images: ImageRecord[], startIndex: numbe
 
     // Original image
     try {
-      const imageBuffer = await fetchImageBuffer(img.id);
+      const imageBuffer = await fetchImageBuffer(img.id, img.dataUrl);
       const { width, height } = await getImageDimensions(imageBuffer);
       const scaled = scaleToFit(width, height, 15);
       
@@ -145,11 +145,11 @@ async function buildModifiedReportContent(images: ImageRecord[], startIndex: num
         imageBuffer = await sharp(savedAnnotated).png().toBuffer();
       } else if (img.annotations.length > 0) {
         // Generate annotated image on the fly
-        const originalBuffer = await fetchImageBuffer(img.id);
+        const originalBuffer = await fetchImageBuffer(img.id, img.dataUrl);
         imageBuffer = await generateAnnotatedImage(originalBuffer, img.annotations);
       } else {
         // No annotations, use original image
-        imageBuffer = await fetchImageBuffer(img.id);
+        imageBuffer = await fetchImageBuffer(img.id, img.dataUrl);
       }
 
       const { width, height } = await getImageDimensions(imageBuffer);
@@ -205,16 +205,31 @@ async function buildModifiedReportContent(images: ImageRecord[], startIndex: num
   return content;
 }
 
-async function fetchImageBuffer(imageId: string): Promise<Buffer> {
+async function fetchImageBuffer(imageId: string, dataUrl?: string): Promise<Buffer> {
+  // Use dataUrl if available (client-side storage)
+  if (dataUrl) {
+    const base64Data = dataUrl.split(',')[1];
+    const buffer = Buffer.from(base64Data, 'base64');
+    
+    // Convert to PNG for Word compatibility with optimized settings
+    const sharp = (await import("sharp")).default;
+    return await sharp(buffer)
+      .png({
+        compressionLevel: 6, // Balance between size and speed
+        adaptiveFiltering: false, // Faster encoding,
+      })
+      .toBuffer();
+  }
+  
+  // Fallback to imageStore (legacy)
   const buffer = imageStore.get(imageId);
   if (!buffer) throw new Error(`Image ${imageId} not found in store`);
   
-  // Convert to PNG for Word compatibility with optimized settings
   const sharp = (await import("sharp")).default;
   return await sharp(buffer)
     .png({
-      compressionLevel: 6, // Balance between size and speed
-      adaptiveFiltering: false, // Faster encoding
+      compressionLevel: 6,
+      adaptiveFiltering: false,
     })
     .toBuffer();
 }
