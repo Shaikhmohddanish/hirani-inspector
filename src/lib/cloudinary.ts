@@ -78,19 +78,34 @@ export async function deleteFromCloudinary(imageId: string): Promise<void> {
 
 // Store metadata as base64-encoded context (persists with the image)
 export async function storeMetadataCloudinary(imageId: string, metadata: any): Promise<void> {
-  try {
-    // Encode metadata as base64 to avoid special character issues
-    const metadataStr = Buffer.from(JSON.stringify(metadata)).toString('base64');
-    
-    await cloudinary.uploader.explicit(`${FOLDER}/${imageId}`, {
-      type: 'upload',
-      context: `metadata=${metadataStr}`,
-    });
-    
-    console.log(`Stored metadata for ${imageId}`);
-  } catch (error) {
-    console.error('Error storing metadata:', error);
-    throw error;
+  const maxRetries = 3;
+  const retryDelay = 1000; // 1 second
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      // Encode metadata as base64 to avoid special character issues
+      const metadataStr = Buffer.from(JSON.stringify(metadata)).toString('base64');
+      
+      await cloudinary.uploader.explicit(`${FOLDER}/${imageId}`, {
+        type: 'upload',
+        context: `metadata=${metadataStr}`,
+      });
+      
+      console.log(`Stored metadata for ${imageId}`);
+      return; // Success!
+    } catch (error: any) {
+      const isNotFound = error?.http_code === 404 || error?.message?.includes('not found');
+      
+      if (isNotFound && attempt < maxRetries) {
+        // Image might still be uploading, wait and retry
+        console.log(`Image ${imageId} not found yet, waiting... (attempt ${attempt}/${maxRetries})`);
+        await new Promise(resolve => setTimeout(resolve, retryDelay * attempt));
+        continue;
+      }
+      
+      console.error('Error storing metadata:', error);
+      throw error;
+    }
   }
 }
 
