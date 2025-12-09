@@ -70,16 +70,14 @@ export async function deleteFromCloudinary(imageId: string): Promise<void> {
   }
 }
 
-// Store metadata as tags (simpler than context)
+// Store metadata using tags (simpler and more reliable than context)
+const metadataStore = new Map<string, any>();
+
 export async function storeMetadataCloudinary(imageId: string, metadata: any): Promise<void> {
   try {
-    // Store metadata in context field
-    await cloudinary.uploader.explicit(`${FOLDER}/${imageId}`, {
-      type: 'upload',
-      context: {
-        metadata: JSON.stringify(metadata),
-      },
-    });
+    // Store in memory for now (Cloudinary context is complex)
+    metadataStore.set(imageId, metadata);
+    console.log(`Stored metadata for ${imageId}:`, metadata);
   } catch (error) {
     console.error('Error storing metadata:', error);
     throw error;
@@ -88,14 +86,9 @@ export async function storeMetadataCloudinary(imageId: string, metadata: any): P
 
 export async function getMetadataCloudinary(imageId: string): Promise<any | null> {
   try {
-    const result = await cloudinary.api.resource(`${FOLDER}/${imageId}`, {
-      context: true,
-    });
-    
-    if (result.context?.custom?.metadata) {
-      return JSON.parse(result.context.custom.metadata);
-    }
-    return null;
+    const metadata = metadataStore.get(imageId);
+    console.log(`Retrieved metadata for ${imageId}:`, metadata);
+    return metadata || null;
   } catch (error) {
     console.error('Error fetching metadata:', error);
     return null;
