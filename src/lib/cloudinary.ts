@@ -23,10 +23,8 @@ export async function uploadToCloudinary(imageId: string, buffer: Buffer): Promi
     const uploadStream = cloudinary.uploader.upload_stream(
       {
         public_id: `${FOLDER}/${imageId}`,
-        folder: FOLDER,
         resource_type: 'image',
         overwrite: true,
-        context: `id=${imageId}`,
       },
       (error, result) => {
         if (error) {
@@ -44,8 +42,11 @@ export async function uploadToCloudinary(imageId: string, buffer: Buffer): Promi
 
 export async function getFromCloudinary(imageId: string): Promise<Buffer> {
   // Use next-cloudinary to get optimized URL
+  const publicId = `${FOLDER}/${imageId}`;
+  console.log(`Fetching from Cloudinary with public_id: ${publicId}`);
+  
   const url = getCldImageUrl({
-    src: `${FOLDER}/${imageId}`,
+    src: publicId,
     width: 1200,
     height: 1200,
     crop: 'limit',
@@ -53,10 +54,15 @@ export async function getFromCloudinary(imageId: string): Promise<Buffer> {
     format: 'auto',
   });
   
+  console.log(`Generated Cloudinary URL: ${url}`);
+  
   const response = await fetch(url);
   if (!response.ok) {
+    console.error(`Failed to fetch ${publicId}: ${response.status} ${response.statusText}`);
     throw new Error(`Failed to fetch image from Cloudinary: ${response.statusText}`);
   }
+  
+  console.log(`Successfully fetched ${publicId}`);
   
   const arrayBuffer = await response.arrayBuffer();
   return Buffer.from(arrayBuffer);
@@ -70,14 +76,18 @@ export async function deleteFromCloudinary(imageId: string): Promise<void> {
   }
 }
 
-// Store metadata using tags (simpler and more reliable than context)
-const metadataStore = new Map<string, any>();
-
+// Store metadata as base64-encoded context (persists with the image)
 export async function storeMetadataCloudinary(imageId: string, metadata: any): Promise<void> {
   try {
-    // Store in memory for now (Cloudinary context is complex)
-    metadataStore.set(imageId, metadata);
-    console.log(`Stored metadata for ${imageId}:`, metadata);
+    // Encode metadata as base64 to avoid special character issues
+    const metadataStr = Buffer.from(JSON.stringify(metadata)).toString('base64');
+    
+    await cloudinary.uploader.explicit(`${FOLDER}/${imageId}`, {
+      type: 'upload',
+      context: `metadata=${metadataStr}`,
+    });
+    
+    console.log(`Stored metadata for ${imageId}`);
   } catch (error) {
     console.error('Error storing metadata:', error);
     throw error;
@@ -86,9 +96,20 @@ export async function storeMetadataCloudinary(imageId: string, metadata: any): P
 
 export async function getMetadataCloudinary(imageId: string): Promise<any | null> {
   try {
-    const metadata = metadataStore.get(imageId);
-    console.log(`Retrieved metadata for ${imageId}:`, metadata);
-    return metadata || null;
+    const result = await cloudinary.api.resource(`${FOLDER}/${imageId}`, {
+      context: true,
+    });
+    
+    if (result.context?.metadata) {
+      // Decode base64 metadata
+      const metadataStr = Buffer.from(result.context.metadata, 'base64').toString('utf-8');
+      const metadata = JSON.parse(metadataStr);
+      console.log(`Retrieved metadata for ${imageId}`);
+      return metadata;
+    }
+    
+    console.log(`No metadata found for ${imageId}`);
+    return null;
   } catch (error) {
     console.error('Error fetching metadata:', error);
     return null;
