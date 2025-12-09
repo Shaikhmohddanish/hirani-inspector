@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useAppStore, AnnotationBox } from "@/store/useAppStore";
 import { ImageCanvas } from "@/components/analysis/ImageCanvas";
 import { LogTerminal } from "@/components/common/LogTerminal";
-import { fabricateRecordsFromFiles } from "@/store/useAppStore";
+import { fabricateRecordsFromFilesCompressed } from "@/store/useAppStore";
 
 export function UnifiedInspectorPanel() {
   const images = useAppStore((state) => state.images);
@@ -26,36 +26,14 @@ export function UnifiedInspectorPanel() {
   // Upload handlers
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
-    const records = await fabricateRecordsFromFiles(files);
+    
+    // Compress images before storing to reduce payload size for reports
+    addLog(`Loading and compressing ${files?.length || 0} images...`, "info");
+    const records = await fabricateRecordsFromFilesCompressed(files);
     if (!records.length) return;
 
     addImages(records);
-    addLog(`Loaded ${records.length} images`, "info");
-    
-    // Upload images to server-side storage to avoid 413 errors
-    addLog(`Uploading ${records.length} images to server...`, "info");
-    let uploaded = 0;
-    try {
-      for (const record of records) {
-        if (!record.dataUrl) continue;
-        const base64Data = record.dataUrl.split(',')[1];
-        const buffer = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
-        
-        await fetch(`/api/images/${record.id}`, {
-          method: "POST",
-          body: buffer,
-        });
-        uploaded++;
-        
-        if (uploaded % 10 === 0) {
-          addLog(`Uploaded ${uploaded}/${records.length}...`, "info");
-        }
-      }
-      addLog(`Successfully uploaded ${uploaded} images to server`, "info");
-    } catch (error) {
-      addLog(`Upload error: ${error instanceof Error ? error.message : 'Unknown'}`, "error");
-    }
-    
+    addLog(`Loaded ${records.length} compressed images`, "info");
     event.target.value = "";
   };
 
@@ -178,34 +156,13 @@ export function UnifiedInspectorPanel() {
     setGenerating(true);
     addLog("Generating normal report...", "info");
     try {
-      // Upload metadata (comments, annotations) for each image
-      addLog("Uploading metadata...", "info");
-      await Promise.all(
-        images.map((img) =>
-          fetch(`/api/images/${img.id}`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ 
-              comment: img.comment, 
-              annotations: img.annotations,
-              name: img.name
-            }),
-          })
-        )
-      );
-
-      // Generate report using only image IDs (tiny payload)
-      addLog("Generating document...", "info");
       const response = await fetch("/api/reports/normal", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ imageIds: images.map(img => img.id) }),
+        body: JSON.stringify({ images }),
       });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Failed to generate report: ${errorText}`);
-      }
+      if (!response.ok) throw new Error("Failed to generate report");
 
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
@@ -230,34 +187,13 @@ export function UnifiedInspectorPanel() {
     setGenerating(true);
     addLog("Generating modified report...", "info");
     try {
-      // Upload metadata (comments, annotations) for each image
-      addLog("Uploading metadata...", "info");
-      await Promise.all(
-        images.map((img) =>
-          fetch(`/api/images/${img.id}`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ 
-              comment: img.comment, 
-              annotations: img.annotations,
-              name: img.name
-            }),
-          })
-        )
-      );
-
-      // Generate report using only image IDs (tiny payload)
-      addLog("Generating document...", "info");
       const response = await fetch("/api/reports/modified", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ imageIds: images.map(img => img.id) }),
+        body: JSON.stringify({ images }),
       });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Failed to generate report: ${errorText}`);
-      }
+      if (!response.ok) throw new Error("Failed to generate report");
 
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
