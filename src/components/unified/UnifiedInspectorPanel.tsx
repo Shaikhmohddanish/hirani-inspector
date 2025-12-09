@@ -31,6 +31,31 @@ export function UnifiedInspectorPanel() {
 
     addImages(records);
     addLog(`Loaded ${records.length} images`, "info");
+    
+    // Upload images to server-side storage to avoid 413 errors
+    addLog(`Uploading ${records.length} images to server...`, "info");
+    let uploaded = 0;
+    try {
+      for (const record of records) {
+        if (!record.dataUrl) continue;
+        const base64Data = record.dataUrl.split(',')[1];
+        const buffer = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
+        
+        await fetch(`/api/images/${record.id}`, {
+          method: "POST",
+          body: buffer,
+        });
+        uploaded++;
+        
+        if (uploaded % 10 === 0) {
+          addLog(`Uploaded ${uploaded}/${records.length}...`, "info");
+        }
+      }
+      addLog(`Successfully uploaded ${uploaded} images to server`, "info");
+    } catch (error) {
+      addLog(`Upload error: ${error instanceof Error ? error.message : 'Unknown'}`, "error");
+    }
+    
     event.target.value = "";
   };
 
@@ -153,13 +178,34 @@ export function UnifiedInspectorPanel() {
     setGenerating(true);
     addLog("Generating normal report...", "info");
     try {
+      // Upload metadata (comments, annotations) for each image
+      addLog("Uploading metadata...", "info");
+      await Promise.all(
+        images.map((img) =>
+          fetch(`/api/images/${img.id}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ 
+              comment: img.comment, 
+              annotations: img.annotations,
+              name: img.name
+            }),
+          })
+        )
+      );
+
+      // Generate report using only image IDs (tiny payload)
+      addLog("Generating document...", "info");
       const response = await fetch("/api/reports/normal", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ images }),
+        body: JSON.stringify({ imageIds: images.map(img => img.id) }),
       });
 
-      if (!response.ok) throw new Error("Failed to generate report");
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to generate report: ${errorText}`);
+      }
 
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
@@ -184,13 +230,34 @@ export function UnifiedInspectorPanel() {
     setGenerating(true);
     addLog("Generating modified report...", "info");
     try {
+      // Upload metadata (comments, annotations) for each image
+      addLog("Uploading metadata...", "info");
+      await Promise.all(
+        images.map((img) =>
+          fetch(`/api/images/${img.id}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ 
+              comment: img.comment, 
+              annotations: img.annotations,
+              name: img.name
+            }),
+          })
+        )
+      );
+
+      // Generate report using only image IDs (tiny payload)
+      addLog("Generating document...", "info");
       const response = await fetch("/api/reports/modified", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ images }),
+        body: JSON.stringify({ imageIds: images.map(img => img.id) }),
       });
 
-      if (!response.ok) throw new Error("Failed to generate report");
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to generate report: ${errorText}`);
+      }
 
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
