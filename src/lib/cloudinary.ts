@@ -13,6 +13,12 @@ cloudinary.config({
 const FOLDER = 'hirani-inspector';
 
 export async function uploadToCloudinary(imageId: string, buffer: Buffer): Promise<string> {
+  console.log(`Cloudinary config:`, {
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    has_api_key: !!process.env.CLOUDINARY_API_KEY,
+    has_api_secret: !!process.env.CLOUDINARY_API_SECRET,
+  });
+  
   return new Promise((resolve, reject) => {
     const uploadStream = cloudinary.uploader.upload_stream(
       {
@@ -23,8 +29,13 @@ export async function uploadToCloudinary(imageId: string, buffer: Buffer): Promi
         context: `id=${imageId}`,
       },
       (error, result) => {
-        if (error) reject(error);
-        else resolve(result!.secure_url);
+        if (error) {
+          console.error('Cloudinary upload error:', error);
+          reject(new Error(`Cloudinary upload failed: ${error.message}`));
+        } else {
+          console.log('Cloudinary upload success:', result?.secure_url);
+          resolve(result!.secure_url);
+        }
       }
     );
     uploadStream.end(buffer);
