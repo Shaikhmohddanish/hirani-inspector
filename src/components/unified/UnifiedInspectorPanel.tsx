@@ -27,13 +27,38 @@ export function UnifiedInspectorPanel() {
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     
-    // Compress images before storing to reduce payload size for reports
+    // Compress images before storing
     addLog(`Loading and compressing ${files?.length || 0} images...`, "info");
     const records = await fabricateRecordsFromFilesCompressed(files);
     if (!records.length) return;
 
     addImages(records);
-    addLog(`Loaded ${records.length} compressed images`, "info");
+    addLog(`Loaded ${records.length} images`, "info");
+    
+    // Upload to Cloudinary for persistent storage
+    addLog(`Uploading ${records.length} images to cloud storage...`, "info");
+    let uploaded = 0;
+    try {
+      for (const record of records) {
+        if (!record.dataUrl) continue;
+        const base64Data = record.dataUrl.split(',')[1];
+        const buffer = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
+        
+        await fetch(`/api/images/${record.id}`, {
+          method: "POST",
+          body: buffer,
+        });
+        uploaded++;
+        
+        if (uploaded % 10 === 0) {
+          addLog(`Uploaded ${uploaded}/${records.length}...`, "info");
+        }
+      }
+      addLog(`Successfully uploaded ${uploaded} images`, "info");
+    } catch (error) {
+      addLog(`Upload error: ${error instanceof Error ? error.message : 'Unknown'}`, "error");
+    }
+    
     event.target.value = "";
   };
 
@@ -156,13 +181,34 @@ export function UnifiedInspectorPanel() {
     setGenerating(true);
     addLog("Generating normal report...", "info");
     try {
+      // Upload metadata for all images
+      addLog("Syncing metadata...", "info");
+      await Promise.all(
+        images.map((img) =>
+          fetch(`/api/images/${img.id}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ 
+              comment: img.comment, 
+              annotations: img.annotations,
+              name: img.name
+            }),
+          })
+        )
+      );
+
+      // Generate report using image IDs
+      addLog("Generating document...", "info");
       const response = await fetch("/api/reports/normal", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ images }),
+        body: JSON.stringify({ imageIds: images.map(img => img.id) }),
       });
 
-      if (!response.ok) throw new Error("Failed to generate report");
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Report failed: ${errorText}`);
+      }
 
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
@@ -187,13 +233,34 @@ export function UnifiedInspectorPanel() {
     setGenerating(true);
     addLog("Generating modified report...", "info");
     try {
+      // Upload metadata for all images
+      addLog("Syncing metadata...", "info");
+      await Promise.all(
+        images.map((img) =>
+          fetch(`/api/images/${img.id}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ 
+              comment: img.comment, 
+              annotations: img.annotations,
+              name: img.name
+            }),
+          })
+        )
+      );
+
+      // Generate report using image IDs
+      addLog("Generating document...", "info");
       const response = await fetch("/api/reports/modified", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ images }),
+        body: JSON.stringify({ imageIds: images.map(img => img.id) }),
       });
 
-      if (!response.ok) throw new Error("Failed to generate report");
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Report failed: ${errorText}`);
+      }
 
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);

@@ -1,72 +1,47 @@
 "use server";
 
-import { writeFile, readFile, unlink, mkdir } from "fs/promises";
-import { existsSync } from "fs";
-import path from "path";
-
-// Use /tmp directory for Vercel serverless functions
-const STORAGE_DIR = "/tmp/image-storage";
-
-// Ensure storage directory exists
-async function ensureStorageDir() {
-  if (!existsSync(STORAGE_DIR)) {
-    await mkdir(STORAGE_DIR, { recursive: true });
-  }
-}
+import { 
+  uploadToCloudinary, 
+  getFromCloudinary, 
+  deleteFromCloudinary,
+  storeMetadataCloudinary,
+  getMetadataCloudinary
+} from './cloudinary';
 
 export async function storeImage(id: string, buffer: Buffer): Promise<void> {
-  await ensureStorageDir();
-  const filePath = path.join(STORAGE_DIR, `${id}.bin`);
-  await writeFile(filePath, buffer);
+  await uploadToCloudinary(id, buffer);
 }
 
 export async function getImage(id: string): Promise<Buffer | null> {
-  const filePath = path.join(STORAGE_DIR, `${id}.bin`);
-  if (!existsSync(filePath)) {
+  try {
+    return await getFromCloudinary(id);
+  } catch (error) {
+    console.error(`Error fetching image ${id}:`, error);
     return null;
   }
-  return await readFile(filePath);
 }
 
 export async function storeMetadata(id: string, metadata: any): Promise<void> {
-  await ensureStorageDir();
-  const filePath = path.join(STORAGE_DIR, `${id}_metadata.json`);
-  await writeFile(filePath, JSON.stringify(metadata));
+  await storeMetadataCloudinary(id, metadata);
 }
 
 export async function getMetadata(id: string): Promise<any | null> {
-  const filePath = path.join(STORAGE_DIR, `${id}_metadata.json`);
-  if (!existsSync(filePath)) {
-    return null;
-  }
-  const content = await readFile(filePath, "utf-8");
-  return JSON.parse(content);
+  return await getMetadataCloudinary(id);
 }
 
 export async function deleteImage(id: string): Promise<void> {
-  const imagePath = path.join(STORAGE_DIR, `${id}.bin`);
-  const metadataPath = path.join(STORAGE_DIR, `${id}_metadata.json`);
-  const annotatedPath = path.join(STORAGE_DIR, `${id}_annotated.bin`);
-  
-  try {
-    if (existsSync(imagePath)) await unlink(imagePath);
-    if (existsSync(metadataPath)) await unlink(metadataPath);
-    if (existsSync(annotatedPath)) await unlink(annotatedPath);
-  } catch (error) {
-    console.error("Error deleting image:", error);
-  }
+  await deleteFromCloudinary(id);
+  await deleteFromCloudinary(`${id}_annotated`);
 }
 
 export async function storeAnnotatedImage(id: string, buffer: Buffer): Promise<void> {
-  await ensureStorageDir();
-  const filePath = path.join(STORAGE_DIR, `${id}_annotated.bin`);
-  await writeFile(filePath, buffer);
+  await uploadToCloudinary(`${id}_annotated`, buffer);
 }
 
 export async function getAnnotatedImage(id: string): Promise<Buffer | null> {
-  const filePath = path.join(STORAGE_DIR, `${id}_annotated.bin`);
-  if (!existsSync(filePath)) {
+  try {
+    return await getFromCloudinary(`${id}_annotated`);
+  } catch (error) {
     return null;
   }
-  return await readFile(filePath);
 }
