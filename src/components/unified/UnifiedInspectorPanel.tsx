@@ -101,6 +101,23 @@ export function UnifiedInspectorPanel() {
           if (result.costUsd) {
             addLog(result.costUsd.toFixed(6), "cost");
           }
+          
+          // Immediately save metadata to Cloudinary after analysis
+          try {
+            await fetch(`/api/images/${img.id}`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ 
+                comment: result.comment, 
+                annotations: img.annotations,
+                name: img.name
+              }),
+            });
+            addLog(`Saved metadata for "${img.name}"`, "info");
+          } catch (metaError) {
+            addLog(`Warning: Failed to save metadata for "${img.name}"`, "error");
+            console.error('Metadata save error:', metaError);
+          }
         } else {
           updateStatus(img.id, "error", result.error || "Analysis failed");
           addLog(`Image ${i + 1}: Error - ${result.error}`, "error");
@@ -207,28 +224,22 @@ export function UnifiedInspectorPanel() {
     setGenerating(true);
     addLog("Generating normal report...", "info");
     try {
-      // Upload metadata for all images
-      addLog("Syncing metadata...", "info");
-      await Promise.all(
-        images.map((img) =>
-          fetch(`/api/images/${img.id}`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ 
-              comment: img.comment, 
-              annotations: img.annotations,
-              name: img.name
-            }),
-          })
-        )
-      );
+      // Use client-side data directly (more reliable than Cloudinary metadata)
+      addLog("Preparing report data...", "info");
+      const reportData = images.map(img => ({
+        id: img.id,
+        name: img.name,
+        comment: img.comment,
+        annotations: img.annotations,
+        dataUrl: img.dataUrl
+      }));
 
-      // Generate report using image IDs
+      // Generate report using full image data
       addLog("Generating document...", "info");
       const response = await fetch("/api/reports/normal", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ imageIds: images.map(img => img.id) }),
+        body: JSON.stringify({ images: reportData }),
       });
 
       if (!response.ok) {
@@ -259,28 +270,22 @@ export function UnifiedInspectorPanel() {
     setGenerating(true);
     addLog("Generating modified report...", "info");
     try {
-      // Upload metadata for all images
-      addLog("Syncing metadata...", "info");
-      await Promise.all(
-        images.map((img) =>
-          fetch(`/api/images/${img.id}`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ 
-              comment: img.comment, 
-              annotations: img.annotations,
-              name: img.name
-            }),
-          })
-        )
-      );
+      // Use client-side data directly (more reliable than Cloudinary metadata)
+      addLog("Preparing report data...", "info");
+      const reportData = images.map(img => ({
+        id: img.id,
+        name: img.name,
+        comment: img.comment,
+        annotations: img.annotations,
+        dataUrl: img.dataUrl
+      }));
 
-      // Generate report using image IDs
+      // Generate report using full image data
       addLog("Generating document...", "info");
       const response = await fetch("/api/reports/modified", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ imageIds: images.map(img => img.id) }),
+        body: JSON.stringify({ images: reportData }),
       });
 
       if (!response.ok) {
@@ -309,6 +314,21 @@ export function UnifiedInspectorPanel() {
   // Navigation
   const goPrev = () => setCurrentIndex((prev) => Math.max(0, prev - 1));
   const goNext = () => setCurrentIndex((prev) => Math.min(images.length - 1, prev + 1));
+
+  // Test metadata retrieval
+  const handleTestMetadata = async () => {
+    if (!currentImage) return;
+    addLog(`Testing metadata for ${currentImage.id}...`, "info");
+    try {
+      const response = await fetch(`/api/test-metadata/${currentImage.id}`);
+      const result = await response.json();
+      addLog(`Metadata test result: ${JSON.stringify(result)}`, "info");
+      console.log('Metadata test:', result);
+      alert(`Metadata retrieved:\nHas metadata: ${result.hasMetadata}\nHas comment: ${result.hasComment}\nComment length: ${result.commentLength}`);
+    } catch (error) {
+      addLog(`Metadata test failed: ${error}`, "error");
+    }
+  };
 
   const completedCount = images.filter((img) => img.status === "completed").length;
   const pendingCount = images.filter((img) => img.status === "pending").length;

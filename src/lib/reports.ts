@@ -24,13 +24,23 @@ export async function generateNormalReport(imageIds: string[] | ImageRecord[]): 
     console.log('Using string[] format - fetching from storage');
     for (const id of imageIds as string[]) {
       const metadata = await getMetadata(id);
+      console.log(`Fetched metadata for ${id}:`, JSON.stringify(metadata, null, 2));
       if (metadata) {
-        images.push({ id, ...metadata });
+        // Metadata structure: { comment, annotations, name }
+        images.push({ 
+          id, 
+          comment: metadata.comment || "No assessment available",
+          annotations: metadata.annotations || [],
+          name: metadata.name || id
+        });
+        console.log(`Added image: ${id}, comment length: ${metadata.comment?.length || 0}`);
       } else {
         // If no metadata, create minimal record
-        images.push({ id, comment: "No assessment available" });
+        console.warn(`⚠️ No metadata found for ${id}`);
+        images.push({ id, comment: "No assessment available", annotations: [], name: id });
       }
     }
+    console.log(`Total images processed: ${images.length}`);
   } else {
     throw new Error(`Invalid input format: expected ImageRecord[] or string[], got ${typeof imageIds[0]}`);
   }
@@ -62,10 +72,18 @@ export async function generateModifiedReport(imageIds: string[] | ImageRecord[])
     console.log('Using string[] format - fetching from storage');
     for (const id of imageIds as string[]) {
       const metadata = await getMetadata(id);
+      console.log(`Metadata for ${id}:`, metadata);
       if (metadata) {
-        images.push({ id, ...metadata });
+        // Metadata structure: { comment, annotations, name }
+        images.push({ 
+          id, 
+          comment: metadata.comment || "No assessment available",
+          annotations: metadata.annotations || [],
+          name: metadata.name || id
+        });
       } else {
-        images.push({ id, comment: "No assessment available", annotations: [] });
+        console.warn(`No metadata found for ${id}`);
+        images.push({ id, comment: "No assessment available", annotations: [], name: id });
       }
     }
   } else {
@@ -94,14 +112,25 @@ async function buildNormalReportContent(images: ImageRecord[], startIndex: numbe
     const img = images[i];
     const globalIndex = startIndex + i;
 
-    // Image number
+    // Image number and filename
     content.push(
       new Paragraph({
         text: `Image No.: ${globalIndex + 1}`,
         alignment: AlignmentType.CENTER,
-        spacing: { before: 200, after: 100 },
+        spacing: { before: 200, after: 50 },
       }),
     );
+    
+    // Filename
+    if (img.name) {
+      content.push(
+        new Paragraph({
+          text: `File: ${img.name}`,
+          alignment: AlignmentType.CENTER,
+          spacing: { after: 100 },
+        }),
+      );
+    }
 
     // Original image
     try {
@@ -164,14 +193,25 @@ async function buildModifiedReportContent(images: ImageRecord[], startIndex: num
     const img = images[i];
     const globalIndex = startIndex + i;
 
-    // Image number
+    // Image number and filename
     content.push(
       new Paragraph({
         text: `Image No.: ${globalIndex + 1}`,
         alignment: AlignmentType.CENTER,
-        spacing: { before: 200, after: 100 },
+        spacing: { before: 200, after: 50 },
       }),
     );
+    
+    // Filename
+    if (img.name) {
+      content.push(
+        new Paragraph({
+          text: `File: ${img.name}`,
+          alignment: AlignmentType.CENTER,
+          spacing: { after: 100 },
+        }),
+      );
+    }
 
     // Modified report: show only annotated image (or original if no annotation)
     try {

@@ -112,29 +112,34 @@ export async function storeMetadataCloudinary(imageId: string, metadata: any): P
   const maxRetries = 3;
   const retryDelay = 1000; // 1 second
   
+  console.log(`Attempting to store metadata for ${imageId}:`, JSON.stringify(metadata, null, 2));
+  
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       // Encode metadata as base64 to avoid special character issues
       const metadataStr = Buffer.from(JSON.stringify(metadata)).toString('base64');
       
-      await cloudinary.uploader.explicit(`${FOLDER}/${imageId}`, {
+      const result = await cloudinary.uploader.explicit(`${FOLDER}/${imageId}`, {
         type: 'upload',
         context: `metadata=${metadataStr}`,
       });
       
-      console.log(`Stored metadata for ${imageId}`);
+      console.log(`✅ Successfully stored metadata for ${imageId} on attempt ${attempt}`);
+      console.log(`Cloudinary response:`, result);
       return; // Success!
     } catch (error: any) {
       const isNotFound = error?.http_code === 404 || error?.message?.includes('not found');
       
+      console.error(`Attempt ${attempt}/${maxRetries} failed for ${imageId}:`, error);
+      
       if (isNotFound && attempt < maxRetries) {
         // Image might still be uploading, wait and retry
-        console.log(`Image ${imageId} not found yet, waiting... (attempt ${attempt}/${maxRetries})`);
+        console.log(`Image ${imageId} not found yet, waiting ${retryDelay * attempt}ms... (attempt ${attempt}/${maxRetries})`);
         await new Promise(resolve => setTimeout(resolve, retryDelay * attempt));
         continue;
       }
       
-      console.error('Error storing metadata:', error);
+      console.error(`❌ Failed to store metadata for ${imageId}:`, error);
       throw error;
     }
   }
@@ -142,22 +147,25 @@ export async function storeMetadataCloudinary(imageId: string, metadata: any): P
 
 export async function getMetadataCloudinary(imageId: string): Promise<any | null> {
   try {
+    console.log(`Fetching metadata for ${imageId}...`);
     const result = await cloudinary.api.resource(`${FOLDER}/${imageId}`, {
       context: true,
     });
+    
+    console.log(`Cloudinary resource result:`, JSON.stringify(result.context, null, 2));
     
     if (result.context?.metadata) {
       // Decode base64 metadata
       const metadataStr = Buffer.from(result.context.metadata, 'base64').toString('utf-8');
       const metadata = JSON.parse(metadataStr);
-      console.log(`Retrieved metadata for ${imageId}`);
+      console.log(`✅ Retrieved metadata for ${imageId}:`, JSON.stringify(metadata, null, 2));
       return metadata;
     }
     
-    console.log(`No metadata found for ${imageId}`);
+    console.warn(`⚠️ No metadata found in context for ${imageId}`);
     return null;
   } catch (error) {
-    console.error('Error fetching metadata:', error);
+    console.error(`❌ Error fetching metadata for ${imageId}:`, error);
     return null;
   }
 }
