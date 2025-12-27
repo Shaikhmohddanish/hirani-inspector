@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
             content: [
               {
                 type: "text",
-                text: "As a civil engineer, I have some photos and would like to classify them into different categories before starting a project. Find if it contains any visible cracks, peeling paint, possible water damage, visual discoloration, honeycombing, spalling or any other possible damage. If nothing, then just mention a statement about the image. Sound it technical and to the point.",
+                text: "As a civil engineer, I have some photos and would like to classify them into different categories before starting a project. Find if it contains any visible cracks, peeling paint, possible water damage, visual discoloration, honeycombing, spalling or any other possible damage. If nothing, then just mention one statement about the image. Sound it technical and to the point. Do not suggest any next steps, only one statement is suffice.",
               },
               {
                 type: "image_url",

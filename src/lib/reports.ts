@@ -112,26 +112,6 @@ async function buildNormalReportContent(images: ImageRecord[], startIndex: numbe
     const img = images[i];
     const globalIndex = startIndex + i;
 
-    // Image number and filename
-    content.push(
-      new Paragraph({
-        text: `Image No.: ${globalIndex + 1}`,
-        alignment: AlignmentType.CENTER,
-        spacing: { before: 200, after: 50 },
-      }),
-    );
-    
-    // Filename
-    if (img.name) {
-      content.push(
-        new Paragraph({
-          text: `File: ${img.name}`,
-          alignment: AlignmentType.CENTER,
-          spacing: { after: 100 },
-        }),
-      );
-    }
-
     // Original image
     try {
       const imageBuffer = await fetchImageBuffer(img.id, img.dataUrl);
@@ -151,24 +131,34 @@ async function buildNormalReportContent(images: ImageRecord[], startIndex: numbe
             }),
           ],
           alignment: AlignmentType.CENTER,
-          spacing: { after: 100 },
+          spacing: { after: 50 },
         }),
       );
     } catch (error) {
       content.push(
         new Paragraph({
           text: `[Error loading image: ${error instanceof Error ? error.message : "Unknown"}]`,
-          alignment: AlignmentType.CENTER,
+          alignment: AlignmentType.LEFT,
+          spacing: { after: 50 },
         }),
       );
     }
 
-    // Assessment
+    // Image label on the left (e.g., Image 01)
     content.push(
       new Paragraph({
-        text: `Assessment: ${img.comment || "No assessment available"}`,
-        alignment: AlignmentType.CENTER,
-        spacing: { before: 100, after: 200 },
+        text: `Image ${String(globalIndex + 1).padStart(2, "0")}`,
+        alignment: AlignmentType.LEFT,
+        spacing: { before: 50, after: 25 },
+      }),
+    );
+
+    // Comment below
+    content.push(
+      new Paragraph({
+        text: `Comment: ${img.comment || "No assessment available"}`,
+        alignment: AlignmentType.LEFT,
+        spacing: { after: 200 },
       }),
     );
 
@@ -192,26 +182,6 @@ async function buildModifiedReportContent(images: ImageRecord[], startIndex: num
   for (let i = 0; i < images.length; i++) {
     const img = images[i];
     const globalIndex = startIndex + i;
-
-    // Image number and filename
-    content.push(
-      new Paragraph({
-        text: `Image No.: ${globalIndex + 1}`,
-        alignment: AlignmentType.CENTER,
-        spacing: { before: 200, after: 50 },
-      }),
-    );
-    
-    // Filename
-    if (img.name) {
-      content.push(
-        new Paragraph({
-          text: `File: ${img.name}`,
-          alignment: AlignmentType.CENTER,
-          spacing: { after: 100 },
-        }),
-      );
-    }
 
     // Modified report: show only annotated image (or original if no annotation)
     try {
@@ -268,24 +238,34 @@ async function buildModifiedReportContent(images: ImageRecord[], startIndex: num
             }),
           ],
           alignment: AlignmentType.CENTER,
-          spacing: { after: 100 },
+          spacing: { after: 50 },
         }),
       );
     } catch (error) {
       content.push(
         new Paragraph({
           text: `[Error loading images: ${error instanceof Error ? error.message : "Unknown"}]`,
-          alignment: AlignmentType.CENTER,
+          alignment: AlignmentType.LEFT,
+          spacing: { after: 50 },
         }),
       );
     }
 
-    // Assessment
+    // Image label on the left (e.g., Image 01)
     content.push(
       new Paragraph({
-        text: `Assessment: ${img.comment || "No assessment available"}`,
-        alignment: AlignmentType.CENTER,
-        spacing: { before: 100, after: 200 },
+        text: `Image ${String(globalIndex + 1).padStart(2, "0")}`,
+        alignment: AlignmentType.LEFT,
+        spacing: { before: 50, after: 25 },
+      }),
+    );
+
+    // Comment below
+    content.push(
+      new Paragraph({
+        text: `Comment: ${img.comment || "No assessment available"}`,
+        alignment: AlignmentType.LEFT,
+        spacing: { after: 200 },
       }),
     );
 
