@@ -12,11 +12,9 @@ import { generateAnnotatedImage } from "@/lib/annotations";
 import { getImage, getMetadata, getAnnotatedImage } from "@/lib/storage";
 
 export async function generateNormalReport(imageIds: string[] | ImageRecord[]): Promise<Buffer> {
-  // Handle both old format (ImageRecord[]) and new format (string[])
   let images: any[] = [];
   
   if (imageIds.length > 0 && typeof imageIds[0] === 'object' && imageIds[0] !== null && 'dataUrl' in imageIds[0]) {
-    // Old format: array of ImageRecord objects with dataUrl
     console.log('Using ImageRecord[] format with dataUrl');
     images = imageIds as ImageRecord[];
   } else if (imageIds.length > 0 && typeof imageIds[0] === 'string') {
