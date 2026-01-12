@@ -14,31 +14,44 @@ import { getImage, getMetadata, getAnnotatedImage } from "@/lib/storage";
 export async function generateNormalReport(imageIds: string[] | ImageRecord[]): Promise<Buffer> {
   let images: any[] = [];
   
-  if (imageIds.length > 0 && typeof imageIds[0] === 'object' && imageIds[0] !== null && 'dataUrl' in imageIds[0]) {
-    console.log('Using ImageRecord[] format with dataUrl');
-    images = imageIds as ImageRecord[];
+  if (imageIds.length > 0 && typeof imageIds[0] === 'object' && imageIds[0] !== null) {
+    const firstItem = imageIds[0] as ImageRecord;
+    
+    if ('dataUrl' in firstItem && firstItem.dataUrl) {
+      // Format 1: Full ImageRecord[] with dataUrl (old format)
+      console.log('[Normal Report] Using ImageRecord[] format with dataUrl');
+      images = imageIds as ImageRecord[];
+    } else if ('id' in firstItem && 'comment' in firstItem) {
+      // Format 2: Hybrid format - has id, comment, annotations but NO dataUrl
+      // Use metadata from request, fetch images from Cloudinary
+      console.log(`[Normal Report] Using hybrid format - metadata from request, images from storage`);
+      images = imageIds as ImageRecord[];
+    } else {
+      throw new Error(`Invalid ImageRecord format`);
+    }
   } else if (imageIds.length > 0 && typeof imageIds[0] === 'string') {
-    // New format: array of image IDs - fetch from storage
-    console.log('Using string[] format - fetching from storage');
+    // Format 3: Array of image IDs only - fetch everything from storage
+    console.log(`[Normal Report] Using string[] format - fetching ${imageIds.length} images from storage`);
+    let fetchedCount = 0;
+    let missingCount = 0;
+    
     for (const id of imageIds as string[]) {
       const metadata = await getMetadata(id);
-      console.log(`Fetched metadata for ${id}:`, JSON.stringify(metadata, null, 2));
       if (metadata) {
-        // Metadata structure: { comment, annotations, name }
         images.push({ 
           id, 
           comment: metadata.comment || "No assessment available",
           annotations: metadata.annotations || [],
           name: metadata.name || id
         });
-        console.log(`Added image: ${id}, comment length: ${metadata.comment?.length || 0}`);
+        fetchedCount++;
       } else {
-        // If no metadata, create minimal record
-        console.warn(`⚠️ No metadata found for ${id}`);
+        console.warn(`⚠️ [Normal Report] No metadata found for ${id}`);
         images.push({ id, comment: "No assessment available", annotations: [], name: id });
+        missingCount++;
       }
     }
-    console.log(`Total images processed: ${images.length}`);
+    console.log(`[Normal Report] Fetched metadata: ${fetchedCount} found, ${missingCount} missing`);
   } else {
     throw new Error(`Invalid input format: expected ImageRecord[] or string[], got ${typeof imageIds[0]}`);
   }
@@ -58,32 +71,46 @@ export async function generateNormalReport(imageIds: string[] | ImageRecord[]): 
 }
 
 export async function generateModifiedReport(imageIds: string[] | ImageRecord[]): Promise<Buffer> {
-  // Handle both old format (ImageRecord[]) and new format (string[])
   let images: any[] = [];
   
-  if (imageIds.length > 0 && typeof imageIds[0] === 'object' && imageIds[0] !== null && 'dataUrl' in imageIds[0]) {
-    // Old format: array of ImageRecord objects with dataUrl
-    console.log('Using ImageRecord[] format with dataUrl');
-    images = imageIds as ImageRecord[];
+  if (imageIds.length > 0 && typeof imageIds[0] === 'object' && imageIds[0] !== null) {
+    const firstItem = imageIds[0] as ImageRecord;
+    
+    if ('dataUrl' in firstItem && firstItem.dataUrl) {
+      // Format 1: Full ImageRecord[] with dataUrl (old format)
+      console.log('[Modified Report] Using ImageRecord[] format with dataUrl');
+      images = imageIds as ImageRecord[];
+    } else if ('id' in firstItem && 'comment' in firstItem) {
+      // Format 2: Hybrid format - has id, comment, annotations but NO dataUrl
+      // Use metadata from request, fetch images from Cloudinary
+      console.log(`[Modified Report] Using hybrid format - metadata from request, images from storage`);
+      images = imageIds as ImageRecord[];
+    } else {
+      throw new Error(`Invalid ImageRecord format`);
+    }
   } else if (imageIds.length > 0 && typeof imageIds[0] === 'string') {
-    // New format: array of image IDs - fetch from storage
-    console.log('Using string[] format - fetching from storage');
+    // Format 3: Array of image IDs only - fetch everything from storage
+    console.log(`[Modified Report] Using string[] format - fetching ${imageIds.length} images from storage`);
+    let fetchedCount = 0;
+    let missingCount = 0;
+    
     for (const id of imageIds as string[]) {
       const metadata = await getMetadata(id);
-      console.log(`Metadata for ${id}:`, metadata);
       if (metadata) {
-        // Metadata structure: { comment, annotations, name }
         images.push({ 
           id, 
           comment: metadata.comment || "No assessment available",
           annotations: metadata.annotations || [],
           name: metadata.name || id
         });
+        fetchedCount++;
       } else {
-        console.warn(`No metadata found for ${id}`);
+        console.warn(`⚠️ [Modified Report] No metadata found for ${id}`);
         images.push({ id, comment: "No assessment available", annotations: [], name: id });
+        missingCount++;
       }
     }
+    console.log(`[Modified Report] Fetched metadata: ${fetchedCount} found, ${missingCount} missing`);
   } else {
     throw new Error(`Invalid input format: expected ImageRecord[] or string[], got ${typeof imageIds[0]}`);
   }

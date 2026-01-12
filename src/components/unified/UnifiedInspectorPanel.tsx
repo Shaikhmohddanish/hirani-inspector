@@ -221,32 +221,44 @@ export function UnifiedInspectorPanel() {
   // Report handlers
   const handleGenerateNormal = async () => {
     if (!images.length) return;
+    
+    // Warn for very large reports
+    if (images.length > 200) {
+      const confirmed = confirm(
+        `⚠️ You're generating a report with ${images.length} images.\n\n` +
+        `This may take several minutes. Continue?`
+      );
+      if (!confirmed) return;
+    }
+    
     setGenerating(true);
-    addLog("Generating normal report...", "info");
+    addLog(`Generating normal report for ${images.length} images...`, "info");
     try {
-      // Use client-side data directly (more reliable than Cloudinary metadata)
-      addLog("Preparing report data...", "info");
-      const reportData = images.map(img => ({
+      // Send image IDs + lightweight metadata (comment + annotations)
+      // This avoids payload limit while ensuring server has latest edits
+      const imageData = images.map(img => ({
         id: img.id,
         name: img.name,
         comment: img.comment,
-        annotations: img.annotations,
-        dataUrl: img.dataUrl
+        annotations: img.annotations
       }));
-
-      // Generate report using full image data
-      addLog("Generating document...", "info");
+      
+      addLog(`Sending request with ${imageData.length} images (payload: ${JSON.stringify({images: imageData}).length} bytes)`, "info");
+      
       const response = await fetch("/api/reports/normal", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ images: reportData }),
+        body: JSON.stringify({ images: imageData }),
       });
 
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`Report failed: ${errorText}`);
+        throw new Error(errorText.includes('Request Entity Too Large') ? 
+          `Report failed: Payload too large. Try uploading images to cloud storage first.` :
+          `Report failed: ${errorText}`);
       }
 
+      addLog("Downloading generated report...", "info");
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -255,10 +267,10 @@ export function UnifiedInspectorPanel() {
       a.download = filename;
       a.click();
       URL.revokeObjectURL(url);
-      addLog(`Normal report saved: ${filename}`, "info");
+      addLog(`✅ Normal report saved: ${filename} (${(blob.size / 1024 / 1024).toFixed(2)} MB)`, "info");
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : "Unknown error";
-      addLog(`Report generation error: ${errorMsg}`, "error");
+      addLog(`❌ Report generation error: ${errorMsg}`, "error");
       alert(`Error: ${errorMsg}`);
     } finally {
       setGenerating(false);
@@ -267,32 +279,44 @@ export function UnifiedInspectorPanel() {
 
   const handleGenerateModified = async () => {
     if (!images.length) return;
+    
+    // Warn for very large reports
+    if (images.length > 200) {
+      const confirmed = confirm(
+        `⚠️ You're generating a report with ${images.length} images.\n\n` +
+        `This may take several minutes. Continue?`
+      );
+      if (!confirmed) return;
+    }
+    
     setGenerating(true);
-    addLog("Generating modified report...", "info");
+    addLog(`Generating modified report for ${images.length} images...`, "info");
     try {
-      // Use client-side data directly (more reliable than Cloudinary metadata)
-      addLog("Preparing report data...", "info");
-      const reportData = images.map(img => ({
+      // Send image IDs + lightweight metadata (comment + annotations)
+      // This avoids payload limit while ensuring server has latest edits
+      const imageData = images.map(img => ({
         id: img.id,
         name: img.name,
         comment: img.comment,
-        annotations: img.annotations,
-        dataUrl: img.dataUrl
+        annotations: img.annotations
       }));
-
-      // Generate report using full image data
-      addLog("Generating document...", "info");
+      
+      addLog(`Sending request with ${imageData.length} images (payload: ${JSON.stringify({images: imageData}).length} bytes)`, "info");
+      
       const response = await fetch("/api/reports/modified", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ images: reportData }),
+        body: JSON.stringify({ images: imageData }),
       });
 
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`Report failed: ${errorText}`);
+        throw new Error(errorText.includes('Request Entity Too Large') ? 
+          `Report failed: Payload too large. Try uploading images to cloud storage first.` :
+          `Report failed: ${errorText}`);
       }
 
+      addLog("Downloading generated report...", "info");
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -301,10 +325,10 @@ export function UnifiedInspectorPanel() {
       a.download = filename;
       a.click();
       URL.revokeObjectURL(url);
-      addLog(`Modified report saved: ${filename}`, "info");
+      addLog(`✅ Modified report saved: ${filename} (${(blob.size / 1024 / 1024).toFixed(2)} MB)`, "info");
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : "Unknown error";
-      addLog(`Report generation error: ${errorMsg}`, "error");
+      addLog(`❌ Report generation error: ${errorMsg}`, "error");
       alert(`Error: ${errorMsg}`);
     } finally {
       setGenerating(false);

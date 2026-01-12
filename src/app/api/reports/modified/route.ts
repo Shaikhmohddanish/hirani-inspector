@@ -12,13 +12,18 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     let input: string[] | ImageRecord[];
     
+    console.log('[Modified Report] Request received');
+    
     if (body.imageIds) {
-      // New format: just IDs (strings)
+      // Format: just IDs (strings)
+      console.log(`[Modified Report] Using imageIds format with ${body.imageIds.length} IDs`);
       input = body.imageIds;
     } else if (body.images) {
-      // Old format: full ImageRecord[] with dataUrl
+      // Format: ImageRecord[] (with or without dataUrl)
+      console.log(`[Modified Report] Using images format with ${body.images.length} records`);
       input = body.images;
     } else {
+      console.error('[Modified Report] No images or imageIds provided in request body');
       return NextResponse.json({ error: "No images provided" }, { status: 400 });
     }
 
@@ -34,7 +39,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    console.log(`[Modified Report] Generating report for ${input.length} images...`);
     const reportBuffer = await generateModifiedReport(input);
+    console.log(`[Modified Report] Report generated successfully: ${reportBuffer.length} bytes`);
 
     return new NextResponse(Uint8Array.from(reportBuffer), {
       headers: {
@@ -45,7 +52,10 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error("Error generating modified report:", error);
+    console.error("[Modified Report] Error generating report:", error);
+    if (error instanceof Error) {
+      console.error('[Modified Report] Error stack:', error.stack);
+    }
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Failed to generate report" },
       { status: 500 },
