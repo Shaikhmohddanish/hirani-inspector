@@ -10,6 +10,9 @@ type PromptVariant = "default" | "gpt";
 
 const PROMPT_STORAGE_KEY = "analysisPromptVariant";
 const PROMPT_TEXT_STORAGE_KEY = "analysisPromptText";
+const COST_STORAGE_KEY = "analysisTotalCost";
+const COST_TIMESTAMP_KEY = "analysisTotalCostTimestamp";
+const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
 const DEFAULT_GPT_PROMPT = `You are a civil engineering inspector. Analyze the image and produce one short, technical sentence describing visible condition. If no defects, say so. Do not suggest next steps.
 
@@ -51,7 +54,27 @@ export function UnifiedInspectorPanel() {
     if (storedPrompt) {
       setPromptText(storedPrompt);
     }
+    const storedCost = localStorage.getItem(COST_STORAGE_KEY);
+    const storedTimestamp = localStorage.getItem(COST_TIMESTAMP_KEY);
+    if (storedCost && storedTimestamp) {
+      const timestamp = Number(storedTimestamp);
+      if (!Number.isNaN(timestamp) && Date.now() - timestamp <= ONE_WEEK_MS) {
+        const parsedCost = Number(storedCost);
+        if (!Number.isNaN(parsedCost)) {
+          setTotalCostUsd(parsedCost);
+        }
+      } else {
+        localStorage.removeItem(COST_STORAGE_KEY);
+        localStorage.removeItem(COST_TIMESTAMP_KEY);
+      }
+    }
   }, []);
+
+  const persistTotalCost = (value: number) => {
+    setTotalCostUsd(value);
+    localStorage.setItem(COST_STORAGE_KEY, value.toString());
+    localStorage.setItem(COST_TIMESTAMP_KEY, Date.now().toString());
+  };
 
   const persistPromptVariant = (variant: PromptVariant) => {
     setPromptVariant(variant);
@@ -168,7 +191,8 @@ export function UnifiedInspectorPanel() {
           addLog(`Image ${i + 1}/${pending.length}: "${img.name}" completed`, "info");
           if (result.costUsd) {
             addLog(result.costUsd.toFixed(6), "cost");
-            setTotalCostUsd((prev) => prev + result.costUsd);
+            const nextTotal = totalCostUsd + result.costUsd;
+            persistTotalCost(nextTotal);
           }
           
           // Immediately save metadata to Cloudinary after analysis
