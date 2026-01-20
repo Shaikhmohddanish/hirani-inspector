@@ -14,6 +14,8 @@ export type AnnotationBox = {
   coords: [number, number, number, number];
 };
 
+export type ImageEnvironment = "indoor" | "outdoor" | "unknown";
+
 export type ImageRecord = {
   id: string;
   name: string;
@@ -21,6 +23,7 @@ export type ImageRecord = {
   uploadedAt: string;
   status: ImageStatus;
   comment: string;
+  environment: ImageEnvironment;
   annotations: AnnotationBox[];
   hasAnnotatedAsset: boolean;
   dataUrl?: string; // Base64 data URL for client-side storage
@@ -30,7 +33,8 @@ interface AppState {
   images: ImageRecord[];
   logs: LogEntry[];
   addImages: (records: ImageRecord[]) => void;
-  updateStatus: (id: string, status: ImageStatus, comment?: string) => void;
+  updateStatus: (id: string, status: ImageStatus, comment?: string, environment?: ImageEnvironment) => void;
+  updateEnvironment: (id: string, environment: ImageEnvironment) => void;
   toggleAnnotation: (id: string, hasAnnotation: boolean) => void;
   removeImage: (id: string) => void;
   updateAnnotations: (id: string, annotations: AnnotationBox[]) => void;
@@ -46,7 +50,7 @@ export const useAppStore = create<AppState>((set) => ({
     set((state) => ({
       images: [...records, ...state.images],
     })),
-  updateStatus: (id, status, comment) =>
+  updateStatus: (id, status, comment, environment) =>
     set((state) => ({
       images: state.images.map((img) =>
         img.id === id
@@ -54,6 +58,18 @@ export const useAppStore = create<AppState>((set) => ({
               ...img,
               status,
               comment: comment ?? img.comment,
+              environment: environment ?? img.environment,
+            }
+          : img,
+      ),
+    })),
+  updateEnvironment: (id, environment) =>
+    set((state) => ({
+      images: state.images.map((img) =>
+        img.id === id
+          ? {
+              ...img,
+              environment,
             }
           : img,
       ),
@@ -122,6 +138,7 @@ export async function fabricateRecordsFromFiles(files: FileList | null): Promise
         uploadedAt: new Date().toISOString(),
         status: "pending" as ImageStatus,
         comment: "",
+        environment: "unknown",
         annotations: [],
         hasAnnotatedAsset: false,
         dataUrl,
@@ -145,6 +162,7 @@ export async function fabricateRecordsFromFilesCompressed(files: FileList | null
         uploadedAt: new Date().toISOString(),
         status: "pending" as ImageStatus,
         comment: "",
+        environment: "unknown",
         annotations: [],
         hasAnnotatedAsset: false,
         dataUrl: compressedDataUrl,

@@ -6,15 +6,45 @@ const client = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-const ANALYSIS_PROMPT = `As a civil engineer, I have some photos and would like to classify them into different categories before starting a project. Find if it contains any visible cracks, peeling paint, possible water damage, visual discoloration, honeycombing, spalling or any other possible damage. If nothing, then just mention one statement about the image. Sound it technical and to the point. Do not suggest any next steps, only one statement is suffice.`;
+const ANALYSIS_PROMPT = `As a civil engineer, review the image and provide one concise technical sentence about visible condition. Mention issues like cracks, peeling paint, water damage, discoloration, honeycombing, or spalling if present. If no issues, state that clearly. Do not suggest next steps.
+
+Also classify the scene as indoor or outdoor if possible.
+
+Return ONLY valid JSON with keys:
+- comment (string, one sentence)
+- environment ("indoor" | "outdoor" | "unknown").`;
 
 export type AnalysisResult = {
   success: boolean;
   comment?: string;
+  environment?: "indoor" | "outdoor" | "unknown";
   error?: string;
   tokens?: { input: number; output: number };
   costUsd?: number;
 };
+
+function normalizeEnvironment(value: string | undefined): "indoor" | "outdoor" | "unknown" {
+  if (!value) return "unknown";
+  const lowered = value.toLowerCase();
+  if (lowered === "indoor") return "indoor";
+  if (lowered === "outdoor") return "outdoor";
+  return "unknown";
+}
+
+function extractJson(content: string): { comment: string; environment: "indoor" | "outdoor" | "unknown" } {
+  const trimmed = content.trim();
+  const jsonMatch = trimmed
+    .replace(/^```json/i, "")
+    .replace(/^```/, "")
+    .replace(/```$/i, "")
+    .trim();
+
+  const parsed = JSON.parse(jsonMatch) as { comment?: string; environment?: string };
+  return {
+    comment: parsed.comment?.trim() || "",
+    environment: normalizeEnvironment(parsed.environment),
+  };
+}
 
 export async function analyzeImage(base64Image: string): Promise<AnalysisResult> {
   try {
@@ -37,7 +67,22 @@ export async function analyzeImage(base64Image: string): Promise<AnalysisResult>
       max_tokens: 300,
     });
 
-    let comment = response.choices[0]?.message?.content?.trim() || "";
+    const content = response.choices[0]?.message?.content?.trim() || "";
+
+    let comment = "";
+    let environment: "indoor" | "outdoor" | "unknown" = "unknown";
+
+    try {
+      const parsed = extractJson(content);
+      comment = parsed.comment;
+      environment = parsed.environment;
+    } catch {
+      comment = content;
+      const lowered = content.toLowerCase();
+      if (lowered.includes("indoor")) environment = "indoor";
+      if (lowered.includes("outdoor")) environment = "outdoor";
+    }
+
     if (comment && !comment.endsWith(".")) {
       comment += ".";
     }
@@ -52,6 +97,7 @@ export async function analyzeImage(base64Image: string): Promise<AnalysisResult>
     return {
       success: true,
       comment,
+      environment,
       tokens: { input: inputTokens, output: outputTokens },
       costUsd: parseFloat(costUsd.toFixed(6)),
     };

@@ -6,14 +6,60 @@ const imageStore = new Map<string, Buffer>();
 // Export for use in image route
 export { imageStore };
 
+const DEFAULT_PROMPT = `As a civil engineer, review the image and provide one concise technical sentence about visible condition. Mention issues like cracks, peeling paint, water damage, discoloration, honeycombing, or spalling if present. If no issues, state that clearly. Do not suggest next steps.
+
+Also classify the scene as indoor or outdoor if possible.
+
+Return ONLY valid JSON with keys:
+- comment (string, one sentence)
+- environment ("indoor" | "outdoor" | "unknown").`;
+
+const GPT_PROMPT = `You are a civil engineering inspector. Analyze the image and produce one short, technical sentence describing visible condition. If no defects, say so. Do not suggest next steps.
+
+Classify the scene as indoor or outdoor if possible.
+
+Return ONLY valid JSON with keys:
+- comment (string, one sentence)
+- environment ("indoor" | "outdoor" | "unknown").`;
+
+function normalizeEnvironment(value: string | undefined): "indoor" | "outdoor" | "unknown" {
+  if (!value) return "unknown";
+  const lowered = value.toLowerCase();
+  if (lowered === "indoor") return "indoor";
+  if (lowered === "outdoor") return "outdoor";
+  return "unknown";
+}
+
+function extractJson(content: string): { comment: string; environment: "indoor" | "outdoor" | "unknown" } {
+  const trimmed = content.trim();
+  const jsonMatch = trimmed
+    .replace(/^```json/i, "")
+    .replace(/^```/, "")
+    .replace(/```$/i, "")
+    .trim();
+
+  const parsed = JSON.parse(jsonMatch) as { comment?: string; environment?: string };
+  return {
+    comment: parsed.comment?.trim() || "",
+    environment: normalizeEnvironment(parsed.environment),
+  };
+}
+
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
     const base64 = formData.get("imageBase64") as string;
+    const promptVariant = formData.get("promptVariant") as string | null;
+    const promptOverride = formData.get("promptOverride") as string | null;
 
     if (!base64) {
       return NextResponse.json({ error: "Image base64 data required" }, { status: 400 });
     }
+
+    const prompt =
+      promptVariant === "gpt"
+        ? (promptOverride?.trim() || GPT_PROMPT)
+        : DEFAULT_PROMPT;
 
     // Call OpenAI
     const openaiResponse = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -30,7 +76,7 @@ export async function POST(request: NextRequest) {
             content: [
               {
                 type: "text",
-                text: "As a civil engineer, I have some photos and would like to classify them into different categories before starting a project. Find if it contains any visible cracks, peeling paint, possible water damage, visual discoloration, honeycombing, spalling or any other possible damage. If nothing, then just mention one statement about the image. Sound it technical and to the point. Do not suggest any next steps, only one statement is suffice.",
+                text: prompt,
               },
               {
                 type: "image_url",
@@ -51,7 +97,22 @@ export async function POST(request: NextRequest) {
     }
 
     const data = await openaiResponse.json();
-    let comment = data.choices[0]?.message?.content?.trim() || "";
+    const content = data.choices[0]?.message?.content?.trim() || "";
+
+    let comment = "";
+    let environment: "indoor" | "outdoor" | "unknown" = "unknown";
+
+    try {
+      const parsed = extractJson(content);
+      comment = parsed.comment;
+      environment = parsed.environment;
+    } catch {
+      comment = content;
+      const lowered = content.toLowerCase();
+      if (lowered.includes("indoor")) environment = "indoor";
+      if (lowered.includes("outdoor")) environment = "outdoor";
+    }
+
     if (comment && !comment.endsWith(".")) {
       comment += ".";
     }
@@ -64,6 +125,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       comment,
+      environment,
       tokens: { input: inputTokens, output: outputTokens },
       costUsd: parseFloat(costUsd.toFixed(6)),
     });

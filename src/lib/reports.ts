@@ -41,13 +41,14 @@ export async function generateNormalReport(imageIds: string[] | ImageRecord[]): 
         images.push({ 
           id, 
           comment: metadata.comment || "No assessment available",
+          environment: metadata.environment || "unknown",
           annotations: metadata.annotations || [],
           name: metadata.name || id
         });
         fetchedCount++;
       } else {
         console.warn(`⚠️ [Normal Report] No metadata found for ${id}`);
-        images.push({ id, comment: "No assessment available", annotations: [], name: id });
+        images.push({ id, comment: "No assessment available", environment: "unknown", annotations: [], name: id });
         missingCount++;
       }
     }
@@ -100,13 +101,14 @@ export async function generateModifiedReport(imageIds: string[] | ImageRecord[])
         images.push({ 
           id, 
           comment: metadata.comment || "No assessment available",
+          environment: metadata.environment || "unknown",
           annotations: metadata.annotations || [],
           name: metadata.name || id
         });
         fetchedCount++;
       } else {
         console.warn(`⚠️ [Modified Report] No metadata found for ${id}`);
-        images.push({ id, comment: "No assessment available", annotations: [], name: id });
+        images.push({ id, comment: "No assessment available", environment: "unknown", annotations: [], name: id });
         missingCount++;
       }
     }
@@ -131,7 +133,7 @@ export async function generateModifiedReport(imageIds: string[] | ImageRecord[])
 
 async function buildNormalReportContent(images: ImageRecord[], startIndex: number = 0): Promise<Paragraph[]> {
   const content: Paragraph[] = [];
-  const imagesPerPage = 2;
+  const imagesPerPage = 1;
 
   for (let i = 0; i < images.length; i++) {
     const img = images[i];
@@ -178,8 +180,13 @@ async function buildNormalReportContent(images: ImageRecord[], startIndex: numbe
       }),
     );
 
-    // Comment below
+    // Environment and comment below
     content.push(
+      new Paragraph({
+        text: `Environment: ${formatEnvironment(img.environment)}`,
+        alignment: AlignmentType.LEFT,
+        spacing: { after: 25 },
+      }),
       new Paragraph({
         text: `Comment: ${img.comment || "No assessment available"}`,
         alignment: AlignmentType.LEFT,
@@ -202,7 +209,7 @@ async function buildNormalReportContent(images: ImageRecord[], startIndex: numbe
 
 async function buildModifiedReportContent(images: ImageRecord[], startIndex: number = 0): Promise<Paragraph[]> {
   const content: Paragraph[] = [];
-  const imagesPerPage = 2;
+  const imagesPerPage = 1;
 
   for (let i = 0; i < images.length; i++) {
     const img = images[i];
@@ -285,8 +292,13 @@ async function buildModifiedReportContent(images: ImageRecord[], startIndex: num
       }),
     );
 
-    // Comment below
+    // Environment and comment below
     content.push(
+      new Paragraph({
+        text: `Environment: ${formatEnvironment(img.environment)}`,
+        alignment: AlignmentType.LEFT,
+        spacing: { after: 25 },
+      }),
       new Paragraph({
         text: `Comment: ${img.comment || "No assessment available"}`,
         alignment: AlignmentType.LEFT,
@@ -360,4 +372,11 @@ function scaleToFit(
     width: Math.round(scaledWidth),
     height: Math.round(scaledHeight),
   };
+}
+
+function formatEnvironment(environment: string | undefined): string {
+  const value = (environment || "unknown").toLowerCase();
+  if (value === "indoor") return "Indoor";
+  if (value === "outdoor") return "Outdoor";
+  return "Unknown";
 }

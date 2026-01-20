@@ -1,16 +1,30 @@
 "use client";
 
-import { useState } from "react";
-import { useAppStore, AnnotationBox } from "@/store/useAppStore";
+import { useEffect, useState } from "react";
+import { useAppStore, AnnotationBox, ImageEnvironment } from "@/store/useAppStore";
 import { ImageCanvas } from "@/components/analysis/ImageCanvas";
 import { LogTerminal } from "@/components/common/LogTerminal";
 import { fabricateRecordsFromFilesCompressed } from "@/store/useAppStore";
+
+type PromptVariant = "default" | "gpt";
+
+const PROMPT_STORAGE_KEY = "analysisPromptVariant";
+const PROMPT_TEXT_STORAGE_KEY = "analysisPromptText";
+
+const DEFAULT_GPT_PROMPT = `You are a civil engineering inspector. Analyze the image and produce one short, technical sentence describing visible condition. If no defects, say so. Do not suggest next steps.
+
+Classify the scene as indoor or outdoor if possible.
+
+Return ONLY valid JSON with keys:
+- comment (string, one sentence)
+- environment ("indoor" | "outdoor" | "unknown").`;
 
 export function UnifiedInspectorPanel() {
   const images = useAppStore((state) => state.images);
   const addImages = useAppStore((state) => state.addImages);
   const removeImage = useAppStore((state) => state.removeImage);
   const updateStatus = useAppStore((state) => state.updateStatus);
+  const updateEnvironment = useAppStore((state) => state.updateEnvironment);
   const updateAnnotations = useAppStore((state) => state.updateAnnotations);
   const addLog = useAppStore((state) => state.addLog);
 
@@ -21,8 +35,57 @@ export function UnifiedInspectorPanel() {
   const [rateSeconds, setRateSeconds] = useState(1.0);
   const [generating, setGenerating] = useState(false);
   const [cleaning, setCleaning] = useState(false);
+  const [promptVariant, setPromptVariant] = useState<PromptVariant>("default");
+  const [promptText, setPromptText] = useState(DEFAULT_GPT_PROMPT);
+  const [showPromptEditor, setShowPromptEditor] = useState(false);
+  const [totalCostUsd, setTotalCostUsd] = useState(0);
 
   const currentImage = images[currentIndex];
+
+  useEffect(() => {
+    const stored = localStorage.getItem(PROMPT_STORAGE_KEY) as PromptVariant | null;
+    if (stored === "gpt" || stored === "default") {
+      setPromptVariant(stored);
+    }
+    const storedPrompt = localStorage.getItem(PROMPT_TEXT_STORAGE_KEY);
+    if (storedPrompt) {
+      setPromptText(storedPrompt);
+    }
+  }, []);
+
+  const persistPromptVariant = (variant: PromptVariant) => {
+    setPromptVariant(variant);
+    localStorage.setItem(PROMPT_STORAGE_KEY, variant);
+  };
+
+  const handleUseGptPrompt = () => {
+    persistPromptVariant("gpt");
+    addLog("Prompt set to GPT", "info");
+  };
+
+  const handleResetPrompt = () => {
+    persistPromptVariant("default");
+    addLog("Prompt reset to default", "info");
+  };
+
+  const handleSavePromptText = () => {
+    localStorage.setItem(PROMPT_TEXT_STORAGE_KEY, promptText);
+    addLog("GPT prompt updated", "info");
+  };
+
+  const handleResetPromptText = () => {
+    setPromptText(DEFAULT_GPT_PROMPT);
+    localStorage.setItem(PROMPT_TEXT_STORAGE_KEY, DEFAULT_GPT_PROMPT);
+    addLog("GPT prompt reset to default text", "info");
+  };
+
+  const normalizeEnvironment = (value: string | undefined): ImageEnvironment => {
+    if (!value) return "unknown";
+    const lowered = value.toLowerCase();
+    if (lowered === "indoor") return "indoor";
+    if (lowered === "outdoor") return "outdoor";
+    return "unknown";
+  };
 
   // Upload handlers
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -88,6 +151,10 @@ export function UnifiedInspectorPanel() {
         
         const formData = new FormData();
         formData.append("imageBase64", base64Data);
+        formData.append("promptVariant", promptVariant);
+        if (promptVariant === "gpt" && promptText.trim().length > 0) {
+          formData.append("promptOverride", promptText.trim());
+        }
 
         const response = await fetch("/api/analyze", {
           method: "POST",
@@ -96,10 +163,12 @@ export function UnifiedInspectorPanel() {
 
         const result = await response.json();
         if (result.success && result.comment) {
-          updateStatus(img.id, "completed", result.comment);
+          const environment = normalizeEnvironment(result.environment);
+          updateStatus(img.id, "completed", result.comment, environment);
           addLog(`Image ${i + 1}/${pending.length}: "${img.name}" completed`, "info");
           if (result.costUsd) {
             addLog(result.costUsd.toFixed(6), "cost");
+            setTotalCostUsd((prev) => prev + result.costUsd);
           }
           
           // Immediately save metadata to Cloudinary after analysis
@@ -110,7 +179,8 @@ export function UnifiedInspectorPanel() {
               body: JSON.stringify({ 
                 comment: result.comment, 
                 annotations: img.annotations,
-                name: img.name
+                name: img.name,
+                environment
               }),
             });
             addLog(`Saved metadata for "${img.name}"`, "info");
@@ -240,6 +310,7 @@ export function UnifiedInspectorPanel() {
         id: img.id,
         name: img.name,
         comment: img.comment,
+        environment: img.environment,
         annotations: img.annotations
       }));
       
@@ -298,6 +369,7 @@ export function UnifiedInspectorPanel() {
         id: img.id,
         name: img.name,
         comment: img.comment,
+        environment: img.environment,
         annotations: img.annotations
       }));
       
@@ -379,6 +451,22 @@ export function UnifiedInspectorPanel() {
         >
           Stop Analysis
         </button>
+        <button
+          onClick={handleResetPrompt}
+          disabled={promptVariant === "default"}
+          className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:bg-slate-300"
+        >
+          Reset Prompt
+        </button>
+        <button
+          onClick={() => setShowPromptEditor((prev) => !prev)}
+          className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+        >
+          {showPromptEditor ? "Hide GPT Prompt" : "Edit GPT Prompt"}
+        </button>
+        <span className="text-xs text-slate-500">
+          Prompt: {promptVariant === "gpt" ? "GPT" : "Default"}
+        </span>
         <label className="flex items-center gap-2 text-sm text-slate-600">
           Rate (s per image):
           <input
@@ -424,8 +512,36 @@ export function UnifiedInspectorPanel() {
           <span className="text-sm text-slate-600">
             {images.length} images | {completedCount} analyzed | {pendingCount} pending
           </span>
+          <span className="text-sm font-semibold text-slate-700">
+            Total Cost: ${totalCostUsd.toFixed(6)}
+          </span>
         </div>
       </div>
+
+      {showPromptEditor && (
+        <div className="border-b border-slate-200 bg-white px-6 py-3">
+          <div className="mb-2 text-sm font-semibold text-slate-900">GPT Prompt (used when GPT prompt is selected)</div>
+          <textarea
+            value={promptText}
+            onChange={(e) => setPromptText(e.target.value)}
+            className="h-32 w-full rounded border border-slate-300 text-black p-2 text-sm"
+          />
+          <div className="mt-2 flex items-center gap-2">
+            <button
+              onClick={handleSavePromptText}
+              className="rounded bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
+            >
+              Save Prompt
+            </button>
+            <button
+              onClick={handleResetPromptText}
+              className="rounded border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              Reset to Default
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Main Content Area */}
       <div className="flex flex-1 overflow-hidden">
@@ -503,6 +619,20 @@ export function UnifiedInspectorPanel() {
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
             {/* GPT Comment */}
             <div>
+              <label className="mb-2 block text-sm font-semibold text-slate-900">
+                Environment:
+              </label>
+              <select
+                value={currentImage?.environment || "unknown"}
+                onChange={(e) =>
+                  currentImage && updateEnvironment(currentImage.id, normalizeEnvironment(e.target.value))
+                }
+                className="mb-3 w-full rounded border border-slate-300 text-black p-2 text-sm"
+              >
+                <option value="unknown">Unknown</option>
+                <option value="indoor">Indoor</option>
+                <option value="outdoor">Outdoor</option>
+              </select>
               <label className="mb-2 block text-sm font-semibold text-slate-900">
                 GPT Comment (editable):
               </label>
