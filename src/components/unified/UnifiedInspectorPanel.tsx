@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useAppStore, AnnotationBox, ImageEnvironment } from "@/store/useAppStore";
+import { useAppStore, AnnotationBox } from "@/store/useAppStore";
 import { ImageCanvas } from "@/components/analysis/ImageCanvas";
 import { LogTerminal } from "@/components/common/LogTerminal";
 import { fabricateRecordsFromFilesCompressed } from "@/store/useAppStore";
@@ -14,20 +14,16 @@ const COST_STORAGE_KEY = "analysisTotalCost";
 const COST_TIMESTAMP_KEY = "analysisTotalCostTimestamp";
 const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
-const DEFAULT_GPT_PROMPT = `You are a civil engineering inspector. Analyze the image and produce one short, technical sentence describing visible condition. If no defects, say so. Do not suggest next steps.
+const DEFAULT_GPT_PROMPT = `You are a civil engineering inspector. Analyze the image and produce one short, technical sentence describing visible condition. If no defects, say so. Do not suggest next steps. Keep your response under 270 characters.
 
-Classify the scene as indoor or outdoor if possible.
-
-Return ONLY valid JSON with keys:
-- comment (string, one sentence)
-- environment ("indoor" | "outdoor" | "unknown").`;
+Return ONLY valid JSON with key:
+- comment (string, one sentence, max 270 characters).`;
 
 export function UnifiedInspectorPanel() {
   const images = useAppStore((state) => state.images);
   const addImages = useAppStore((state) => state.addImages);
   const removeImage = useAppStore((state) => state.removeImage);
   const updateStatus = useAppStore((state) => state.updateStatus);
-  const updateEnvironment = useAppStore((state) => state.updateEnvironment);
   const updateAnnotations = useAppStore((state) => state.updateAnnotations);
   const addLog = useAppStore((state) => state.addLog);
 
@@ -100,14 +96,6 @@ export function UnifiedInspectorPanel() {
     setPromptText(DEFAULT_GPT_PROMPT);
     localStorage.setItem(PROMPT_TEXT_STORAGE_KEY, DEFAULT_GPT_PROMPT);
     addLog("GPT prompt reset to default text", "info");
-  };
-
-  const normalizeEnvironment = (value: string | undefined): ImageEnvironment => {
-    if (!value) return "unknown";
-    const lowered = value.toLowerCase();
-    if (lowered === "indoor") return "indoor";
-    if (lowered === "outdoor") return "outdoor";
-    return "unknown";
   };
 
   // Upload handlers
@@ -186,8 +174,7 @@ export function UnifiedInspectorPanel() {
 
         const result = await response.json();
         if (result.success && result.comment) {
-          const environment = normalizeEnvironment(result.environment);
-          updateStatus(img.id, "completed", result.comment, environment);
+          updateStatus(img.id, "completed", result.comment);
           addLog(`Image ${i + 1}/${pending.length}: "${img.name}" completed`, "info");
           if (result.costUsd) {
             addLog(result.costUsd.toFixed(6), "cost");
@@ -201,10 +188,11 @@ export function UnifiedInspectorPanel() {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ 
+                id: img.id,
+                name: img.name,
                 comment: result.comment, 
                 annotations: img.annotations,
-                name: img.name,
-                environment
+                status: "completed"
               }),
             });
             addLog(`Saved metadata for "${img.name}"`, "info");
@@ -536,9 +524,11 @@ export function UnifiedInspectorPanel() {
           <span className="text-sm text-slate-600">
             {images.length} images | {completedCount} analyzed | {pendingCount} pending
           </span>
-          <span className="text-sm font-semibold text-slate-700">
-            Total Cost: ${totalCostUsd.toFixed(6)}
-          </span>
+          <div className="flex flex-col items-end gap-1">
+            <span className="text-sm font-semibold text-slate-700">
+              Session Cost: ${totalCostUsd.toFixed(6)}
+            </span>
+          </div>
         </div>
       </div>
 
@@ -643,20 +633,6 @@ export function UnifiedInspectorPanel() {
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
             {/* GPT Comment */}
             <div>
-              <label className="mb-2 block text-sm font-semibold text-slate-900">
-                Environment:
-              </label>
-              <select
-                value={currentImage?.environment || "unknown"}
-                onChange={(e) =>
-                  currentImage && updateEnvironment(currentImage.id, normalizeEnvironment(e.target.value))
-                }
-                className="mb-3 w-full rounded border border-slate-300 text-black p-2 text-sm"
-              >
-                <option value="unknown">Unknown</option>
-                <option value="indoor">Indoor</option>
-                <option value="outdoor">Outdoor</option>
-              </select>
               <label className="mb-2 block text-sm font-semibold text-slate-900">
                 GPT Comment (editable):
               </label>

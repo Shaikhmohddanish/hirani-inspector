@@ -6,31 +6,17 @@ const imageStore = new Map<string, Buffer>();
 // Export for use in image route
 export { imageStore };
 
-const DEFAULT_PROMPT = `As a civil engineer, review the image and provide one concise technical sentence about visible condition. Mention issues like cracks, peeling paint, water damage, discoloration, honeycombing, or spalling if present. If no issues, state that clearly. Do not suggest next steps.
+const DEFAULT_PROMPT = `As a civil engineer, review the image and provide one concise technical sentence about visible condition. Mention issues like cracks, peeling paint, water damage, discoloration, honeycombing, or spalling if present. If no issues, state that clearly. Do not suggest next steps. Keep your response under 270 characters.
 
-Also classify the scene as indoor or outdoor if possible.
+Return ONLY valid JSON with key:
+- comment (string, one sentence, max 270 characters).`;
 
-Return ONLY valid JSON with keys:
-- comment (string, one sentence)
-- environment ("indoor" | "outdoor" | "unknown").`;
+const GPT_PROMPT = `You are a civil engineering inspector. Analyze the image and produce one short, technical sentence describing visible condition. If no defects, say so. Do not suggest next steps. Keep your response under 270 characters.
 
-const GPT_PROMPT = `You are a civil engineering inspector. Analyze the image and produce one short, technical sentence describing visible condition. If no defects, say so. Do not suggest next steps.
+Return ONLY valid JSON with key:
+- comment (string, one sentence, max 270 characters).`;
 
-Classify the scene as indoor or outdoor if possible.
-
-Return ONLY valid JSON with keys:
-- comment (string, one sentence)
-- environment ("indoor" | "outdoor" | "unknown").`;
-
-function normalizeEnvironment(value: string | undefined): "indoor" | "outdoor" | "unknown" {
-  if (!value) return "unknown";
-  const lowered = value.toLowerCase();
-  if (lowered === "indoor") return "indoor";
-  if (lowered === "outdoor") return "outdoor";
-  return "unknown";
-}
-
-function extractJson(content: string): { comment: string; environment: "indoor" | "outdoor" | "unknown" } {
+function extractJson(content: string): { comment: string } {
   const trimmed = content.trim();
   const jsonMatch = trimmed
     .replace(/^```json/i, "")
@@ -38,10 +24,9 @@ function extractJson(content: string): { comment: string; environment: "indoor" 
     .replace(/```$/i, "")
     .trim();
 
-  const parsed = JSON.parse(jsonMatch) as { comment?: string; environment?: string };
+  const parsed = JSON.parse(jsonMatch) as { comment?: string };
   return {
     comment: parsed.comment?.trim() || "",
-    environment: normalizeEnvironment(parsed.environment),
   };
 }
 
@@ -100,17 +85,12 @@ export async function POST(request: NextRequest) {
     const content = data.choices[0]?.message?.content?.trim() || "";
 
     let comment = "";
-    let environment: "indoor" | "outdoor" | "unknown" = "unknown";
 
     try {
       const parsed = extractJson(content);
       comment = parsed.comment;
-      environment = parsed.environment;
     } catch {
       comment = content;
-      const lowered = content.toLowerCase();
-      if (lowered.includes("indoor")) environment = "indoor";
-      if (lowered.includes("outdoor")) environment = "outdoor";
     }
 
     if (comment && !comment.endsWith(".")) {
@@ -125,7 +105,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       comment,
-      environment,
       tokens: { input: inputTokens, output: outputTokens },
       costUsd: parseFloat(costUsd.toFixed(6)),
     });

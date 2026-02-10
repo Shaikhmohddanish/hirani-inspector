@@ -41,14 +41,13 @@ export async function generateNormalReport(imageIds: string[] | ImageRecord[]): 
         images.push({ 
           id, 
           comment: metadata.comment || "No assessment available",
-          environment: metadata.environment || "unknown",
           annotations: metadata.annotations || [],
           name: metadata.name || id
         });
         fetchedCount++;
       } else {
         console.warn(`⚠️ [Normal Report] No metadata found for ${id}`);
-        images.push({ id, comment: "No assessment available", environment: "unknown", annotations: [], name: id });
+        images.push({ id, comment: "No assessment available", annotations: [], name: id });
         missingCount++;
       }
     }
@@ -101,14 +100,13 @@ export async function generateModifiedReport(imageIds: string[] | ImageRecord[])
         images.push({ 
           id, 
           comment: metadata.comment || "No assessment available",
-          environment: metadata.environment || "unknown",
           annotations: metadata.annotations || [],
           name: metadata.name || id
         });
         fetchedCount++;
       } else {
         console.warn(`⚠️ [Modified Report] No metadata found for ${id}`);
-        images.push({ id, comment: "No assessment available", environment: "unknown", annotations: [], name: id });
+        images.push({ id, comment: "No assessment available", annotations: [], name: id });
         missingCount++;
       }
     }
@@ -133,7 +131,7 @@ export async function generateModifiedReport(imageIds: string[] | ImageRecord[])
 
 async function buildNormalReportContent(images: ImageRecord[], startIndex: number = 0): Promise<Paragraph[]> {
   const content: Paragraph[] = [];
-  const imagesPerPage = 1;
+  const imagesPerPage = 2; // Fit 2 images per page
 
   for (let i = 0; i < images.length; i++) {
     const img = images[i];
@@ -142,8 +140,7 @@ async function buildNormalReportContent(images: ImageRecord[], startIndex: numbe
     // Original image
     try {
       const imageBuffer = await fetchImageBuffer(img.id, img.dataUrl);
-      const { width, height } = await getImageDimensions(imageBuffer);
-      const scaled = scaleToFit(width, height, 15);
+      const scaled = scaleToFixedSize(10, 12); // Fixed: 10cm height, 12cm width
 
       content.push(
         new Paragraph({
@@ -158,7 +155,7 @@ async function buildNormalReportContent(images: ImageRecord[], startIndex: numbe
             }),
           ],
           alignment: AlignmentType.CENTER,
-          spacing: { after: 50 },
+          spacing: { after: 30 },
         }),
       );
     } catch (error) {
@@ -176,25 +173,21 @@ async function buildNormalReportContent(images: ImageRecord[], startIndex: numbe
       new Paragraph({
         text: `Image ${String(globalIndex + 1).padStart(2, "0")}`,
         alignment: AlignmentType.LEFT,
-        spacing: { before: 50, after: 25 },
+        spacing: { before: 40, after: 20 },
       }),
     );
 
-    // Environment and comment below
+    // Comment below (limited to 3 lines)
+    const truncatedComment = truncateToLines(img.comment || "No assessment available", 3);
     content.push(
       new Paragraph({
-        text: `Environment: ${formatEnvironment(img.environment)}`,
+        text: `Comment: ${truncatedComment}`,
         alignment: AlignmentType.LEFT,
-        spacing: { after: 25 },
-      }),
-      new Paragraph({
-        text: `Comment: ${img.comment || "No assessment available"}`,
-        alignment: AlignmentType.LEFT,
-        spacing: { after: 200 },
+        spacing: { after: 80 },
       }),
     );
 
-    // Page break (except for last image or every 2 images)
+    // Page break (every 2 images)
     if ((i + 1) % imagesPerPage === 0 && i + 1 !== images.length) {
       content.push(
         new Paragraph({
@@ -209,7 +202,7 @@ async function buildNormalReportContent(images: ImageRecord[], startIndex: numbe
 
 async function buildModifiedReportContent(images: ImageRecord[], startIndex: number = 0): Promise<Paragraph[]> {
   const content: Paragraph[] = [];
-  const imagesPerPage = 1;
+  const imagesPerPage = 2; // Fit 2 images per page
 
   for (let i = 0; i < images.length; i++) {
     const img = images[i];
@@ -254,8 +247,7 @@ async function buildModifiedReportContent(images: ImageRecord[], startIndex: num
         imageBuffer = await fetchImageBuffer(img.id, img.dataUrl);
       }
 
-      const { width, height } = await getImageDimensions(imageBuffer);
-      const scaled = scaleToFit(width, height, 15);
+      const scaled = scaleToFixedSize(10, 12); // Fixed: 10cm height, 12cm width
 
       content.push(
         new Paragraph({
@@ -270,7 +262,7 @@ async function buildModifiedReportContent(images: ImageRecord[], startIndex: num
             }),
           ],
           alignment: AlignmentType.CENTER,
-          spacing: { after: 50 },
+          spacing: { after: 30 },
         }),
       );
     } catch (error) {
@@ -288,25 +280,21 @@ async function buildModifiedReportContent(images: ImageRecord[], startIndex: num
       new Paragraph({
         text: `Image ${String(globalIndex + 1).padStart(2, "0")}`,
         alignment: AlignmentType.LEFT,
-        spacing: { before: 50, after: 25 },
+        spacing: { before: 40, after: 20 },
       }),
     );
 
-    // Environment and comment below
+    // Comment below (limited to 3 lines)
+    const truncatedComment = truncateToLines(img.comment || "No assessment available", 3);
     content.push(
       new Paragraph({
-        text: `Environment: ${formatEnvironment(img.environment)}`,
+        text: `Comment: ${truncatedComment}`,
         alignment: AlignmentType.LEFT,
-        spacing: { after: 25 },
-      }),
-      new Paragraph({
-        text: `Comment: ${img.comment || "No assessment available"}`,
-        alignment: AlignmentType.LEFT,
-        spacing: { after: 200 },
+        spacing: { after: 80 },
       }),
     );
 
-    // Page break
+    // Page break (every 2 images)
     if ((i + 1) % imagesPerPage === 0 && i + 1 !== images.length) {
       content.push(
         new Paragraph({
@@ -347,36 +335,33 @@ async function fetchImageBuffer(imageId: string, dataUrl?: string): Promise<Buff
     .toBuffer();
 }
 
-async function getImageDimensions(buffer: Buffer): Promise<{ width: number; height: number }> {
-  const sharp = (await import("sharp")).default;
-  const metadata = await sharp(buffer).metadata();
-  return {
-    width: metadata.width || 800,
-    height: metadata.height || 600,
-  };
-}
-
-function scaleToFit(
-  widthPx: number,
-  heightPx: number,
-  maxWidthCm: number,
+function scaleToFixedSize(
+  heightCm: number,
+  widthCm: number,
 ): { width: number; height: number } {
-  // docx library expects dimensions in pixels, not EMU
+  // Fixed dimensions for consistent layout (2 reports per page)
+  // docx library expects dimensions in pixels at 96 DPI
   const DPI = 96;
   const CM_PER_INCH = 2.54;
-  const maxWidthPx = (maxWidthCm / CM_PER_INCH) * DPI;
-  const scale = Math.min(1, maxWidthPx / widthPx);
-  const scaledWidth = widthPx * scale;
-  const scaledHeight = heightPx * scale;
+  const widthPx = (widthCm / CM_PER_INCH) * DPI;
+  const heightPx = (heightCm / CM_PER_INCH) * DPI;
   return {
-    width: Math.round(scaledWidth),
-    height: Math.round(scaledHeight),
+    width: Math.round(widthPx),
+    height: Math.round(heightPx),
   };
 }
 
-function formatEnvironment(environment: string | undefined): string {
-  const value = (environment || "unknown").toLowerCase();
-  if (value === "indoor") return "Indoor";
-  if (value === "outdoor") return "Outdoor";
-  return "Unknown";
+function truncateToLines(text: string, maxLines: number): string {
+  if (!text) return "";
+  
+  // Approximate character count per line (assuming ~80-100 chars per line in Word)
+  const charsPerLine = 90;
+  const maxChars = charsPerLine * maxLines;
+  
+  if (text.length <= maxChars) {
+    return text;
+  }
+  
+  // Truncate to max chars and add ellipsis
+  return text.substring(0, maxChars - 3) + "...";
 }
