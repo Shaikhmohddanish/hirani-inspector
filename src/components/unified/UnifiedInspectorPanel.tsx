@@ -42,6 +42,8 @@ export function UnifiedInspectorPanel() {
   const [promptText, setPromptText] = useState(DEFAULT_GPT_PROMPT);
   const [showPromptEditor, setShowPromptEditor] = useState(false);
   const [totalCostUsd, setTotalCostUsd] = useState(0);
+  const [openAIBalance, setOpenAIBalance] = useState<{ used: number; remaining: number; limit: number } | null>(null);
+  const [loadingBalance, setLoadingBalance] = useState(false);
 
   const currentImage = images[currentIndex];
 
@@ -70,10 +72,36 @@ export function UnifiedInspectorPanel() {
     }
   }, []);
 
+  // Fetch OpenAI balance on mount
+  useEffect(() => {
+    fetchOpenAIBalance();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const persistTotalCost = (value: number) => {
     setTotalCostUsd(value);
     localStorage.setItem(COST_STORAGE_KEY, value.toString());
     localStorage.setItem(COST_TIMESTAMP_KEY, Date.now().toString());
+  };
+
+  const fetchOpenAIBalance = async () => {
+    setLoadingBalance(true);
+    try {
+      const response = await fetch('/api/openai-balance');
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.balance) {
+          setOpenAIBalance(data.balance);
+          addLog(`OpenAI Balance: $${data.balance.remaining.toFixed(2)} remaining`, "info");
+        }
+      } else {
+        console.error('Failed to fetch OpenAI balance');
+      }
+    } catch (error) {
+      console.error('Error fetching OpenAI balance:', error);
+    } finally {
+      setLoadingBalance(false);
+    }
   };
 
   const persistPromptVariant = (variant: PromptVariant) => {
@@ -511,6 +539,14 @@ export function UnifiedInspectorPanel() {
         >
           {cleaning ? 'Cleaning...' : '🗑️ Cleanup Cloud'}
         </button>
+        <button
+          onClick={fetchOpenAIBalance}
+          disabled={loadingBalance}
+          className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:bg-slate-300"
+          title="Refresh OpenAI balance"
+        >
+          {loadingBalance ? '⏳' : '🔄 Balance'}
+        </button>
         <div className="ml-auto flex items-center gap-4">
           <form action="/api/auth/logout" method="POST">
             <button
@@ -536,9 +572,19 @@ export function UnifiedInspectorPanel() {
           <span className="text-sm text-slate-600">
             {images.length} images | {completedCount} analyzed | {pendingCount} pending
           </span>
-          <span className="text-sm font-semibold text-slate-700">
-            Total Cost: ${totalCostUsd.toFixed(6)}
-          </span>
+          <div className="flex flex-col items-end gap-1">
+            <span className="text-sm font-semibold text-slate-700">
+              Session Cost: ${totalCostUsd.toFixed(6)}
+            </span>
+            {openAIBalance && (
+              <span className="text-xs text-slate-600">
+                OpenAI: ${openAIBalance.used.toFixed(2)} used | ${openAIBalance.remaining.toFixed(2)} remaining
+              </span>
+            )}
+            {loadingBalance && (
+              <span className="text-xs text-slate-500">Loading balance...</span>
+            )}
+          </div>
         </div>
       </div>
 
