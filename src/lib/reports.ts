@@ -133,7 +133,7 @@ export async function generateModifiedReport(imageIds: string[] | ImageRecord[])
 
 async function buildNormalReportContent(images: ImageRecord[], startIndex: number = 0): Promise<Paragraph[]> {
   const content: Paragraph[] = [];
-  const imagesPerPage = 1;
+  const imagesPerPage = 2; // Fit 2 images per page
 
   for (let i = 0; i < images.length; i++) {
     const img = images[i];
@@ -143,7 +143,7 @@ async function buildNormalReportContent(images: ImageRecord[], startIndex: numbe
     try {
       const imageBuffer = await fetchImageBuffer(img.id, img.dataUrl);
       const { width, height } = await getImageDimensions(imageBuffer);
-      const scaled = scaleToFit(width, height, 15);
+      const scaled = scaleToFit(width, height, 12); // Reduced from 15cm to 12cm for 2 per page
 
       content.push(
         new Paragraph({
@@ -180,21 +180,17 @@ async function buildNormalReportContent(images: ImageRecord[], startIndex: numbe
       }),
     );
 
-    // Environment and comment below
+    // Comment below (limited to 3 lines)
+    const truncatedComment = truncateToLines(img.comment || "No assessment available", 3);
     content.push(
       new Paragraph({
-        text: `Environment: ${formatEnvironment(img.environment)}`,
+        text: `Comment: ${truncatedComment}`,
         alignment: AlignmentType.LEFT,
-        spacing: { after: 25 },
-      }),
-      new Paragraph({
-        text: `Comment: ${img.comment || "No assessment available"}`,
-        alignment: AlignmentType.LEFT,
-        spacing: { after: 200 },
+        spacing: { after: 100 },
       }),
     );
 
-    // Page break (except for last image or every 2 images)
+    // Page break (every 2 images)
     if ((i + 1) % imagesPerPage === 0 && i + 1 !== images.length) {
       content.push(
         new Paragraph({
@@ -209,7 +205,7 @@ async function buildNormalReportContent(images: ImageRecord[], startIndex: numbe
 
 async function buildModifiedReportContent(images: ImageRecord[], startIndex: number = 0): Promise<Paragraph[]> {
   const content: Paragraph[] = [];
-  const imagesPerPage = 1;
+  const imagesPerPage = 2; // Fit 2 images per page
 
   for (let i = 0; i < images.length; i++) {
     const img = images[i];
@@ -255,7 +251,7 @@ async function buildModifiedReportContent(images: ImageRecord[], startIndex: num
       }
 
       const { width, height } = await getImageDimensions(imageBuffer);
-      const scaled = scaleToFit(width, height, 15);
+      const scaled = scaleToFit(width, height, 12); // Reduced from 15cm to 12cm for 2 per page
 
       content.push(
         new Paragraph({
@@ -292,21 +288,17 @@ async function buildModifiedReportContent(images: ImageRecord[], startIndex: num
       }),
     );
 
-    // Environment and comment below
+    // Comment below (limited to 3 lines)
+    const truncatedComment = truncateToLines(img.comment || "No assessment available", 3);
     content.push(
       new Paragraph({
-        text: `Environment: ${formatEnvironment(img.environment)}`,
+        text: `Comment: ${truncatedComment}`,
         alignment: AlignmentType.LEFT,
-        spacing: { after: 25 },
-      }),
-      new Paragraph({
-        text: `Comment: ${img.comment || "No assessment available"}`,
-        alignment: AlignmentType.LEFT,
-        spacing: { after: 200 },
+        spacing: { after: 100 },
       }),
     );
 
-    // Page break
+    // Page break (every 2 images)
     if ((i + 1) % imagesPerPage === 0 && i + 1 !== images.length) {
       content.push(
         new Paragraph({
@@ -374,9 +366,17 @@ function scaleToFit(
   };
 }
 
-function formatEnvironment(environment: string | undefined): string {
-  const value = (environment || "unknown").toLowerCase();
-  if (value === "indoor") return "Indoor";
-  if (value === "outdoor") return "Outdoor";
-  return "Unknown";
+function truncateToLines(text: string, maxLines: number): string {
+  if (!text) return "";
+  
+  // Approximate character count per line (assuming ~80-100 chars per line in Word)
+  const charsPerLine = 90;
+  const maxChars = charsPerLine * maxLines;
+  
+  if (text.length <= maxChars) {
+    return text;
+  }
+  
+  // Truncate to max chars and add ellipsis
+  return text.substring(0, maxChars - 3) + "...";
 }
